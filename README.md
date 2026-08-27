@@ -42,26 +42,5 @@ L'interface s'attend à recevoir une chaîne de caractères (String) depuis le B
   "rssi": -85,
   "lat": 47.854298,
   "lon": 3.434910,
-}
-
-## 🛠️ Feuille de route (Roadmap)
-
-*   **V6.x - Architecture Multi-Récepteurs (Multi-RX) et Multi-Émetteurs :** 
-    Le prochain grand objectif est de permettre le suivi de plusieurs aéronefs simultanément, tout en s'appuyant sur un réseau de plusieurs stations sol pour étendre la couverture radio et assurer une redondance (ex: un RX près du pilote, un RX relais placé sur un point haut).
-
-    **Comment y parvenir (Les axes de développement) :**
-
-    *   **1. Évolution du client Web (Connexions BLE Multiples) :** 
-        *   Côté JavaScript, il faudra remplacer les variables globales uniques (`bleDevice`, `bleCharact`) par des collections (Tableaux ou Dictionnaires) afin de maintenir plusieurs connexions GATT simultanées.
-        *   Le bouton "Connecter" devra permettre un appairage itératif pour ajouter plusieurs boîtiers Heltec à la suite (qui devront avoir des noms distincts, ex: `DLXR_RX_1`, `DLXR_RX_2`).
-    
-    *   **2. Traitement et Déduplication des données (JS) :**
-        *   Si plusieurs récepteurs (RX) captent la même trame LoRa provenant du même modèle, le code web recevra l'information en double.
-        *   Il faudra implémenter une logique de fusion : le JSON transmis par les RX devra inclure un identifiant de paquet (`packet_id`) ou un horodatage (`timestamp`). Le client Web ignorera les doublons et conservera idéalement la trame issue du RX ayant le meilleur `rssi`.
-    
-    *   **3. Alternative Réseau (Maître/Esclave via ESP-NOW) :**
-        *   Au lieu de complexifier l'interface web avec du multi-BLE, une autre solution consiste à modifier le code C++ des modules ESP32 Heltec.
-        *   Les RX secondaires communiquent entre eux et envoient leurs données à un RX "Maître" via **ESP-NOW** (protocole Wi-Fi très basse latence d'Espressif).
-        *   Le RX "Maître" centralise toutes les télémétries et reste le **seul point de connexion BLE** avec le smartphone du pilote. Le code HTML/JS actuel nécessiterait alors beaucoup moins de modifications.
   "moved": true
-
+}
