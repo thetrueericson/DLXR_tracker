@@ -42,6 +42,7 @@ L'interface s'attend à recevoir une chaîne de caractères (String) depuis le B
   "rssi": -85,
   "lat": 47.854298,
   "lon": 3.434910,
+}
 
 ## 🛠️ Feuille de route (Roadmap)
 
@@ -63,4 +64,4 @@ L'interface s'attend à recevoir une chaîne de caractères (String) depuis le B
         *   Les RX secondaires communiquent entre eux et envoient leurs données à un RX "Maître" via **ESP-NOW** (protocole Wi-Fi très basse latence d'Espressif).
         *   Le RX "Maître" centralise toutes les télémétries et reste le **seul point de connexion BLE** avec le smartphone du pilote. Le code HTML/JS actuel nécessiterait alors beaucoup moins de modifications.
   "moved": true
-}
+
