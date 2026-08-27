@@ -44,3 +44,10 @@ L'interface s'attend à recevoir une chaîne de caractères (String) depuis le B
   "lon": 3.434910,
   "moved": true
 }
+
+
+
+
+### Format JSON attendu pour l'évolution multi émetteur
+
+{"drone_id": "EZ-glider", "etat": "HIGH", "alt": 120, "lat": 47.85, "lon": 3.43, "rssi": -80}
