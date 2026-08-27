@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>DLXR Tracker V6 - MULTI</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #0a0e1a;
+      --panel:     #0f1628;
+      --border:    #1e2d4a;
+      --accent:    #00d4ff;
+      --accent2:   #ff6b35;
+      --green:     #00ff9d;
+      --yellow:    #ffd700;
+      --red:       #ff3b5c;
+      --text:      #e0eeff;
+      --muted:     #4a6080;
+      --mono:      'Share Tech Mono', monospace;
+      --sans:      'Exo 2', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      z-index: 1000;
+      flex-shrink: 0;
+    }
+
+    .logo {
+      font-family: var(--mono);
+      font-size: 1.1rem;
+      color: var(--accent);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+    .logo span { color: var(--accent2); }
+
+    #ble-btn {
+      background: transparent;
+      border: 1.5px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all 0.2s;
+    }
+    #ble-btn:hover { background: var(--accent); color: var(--bg); }
+    #ble-btn.connected { border-color: var(--green); color: var(--green); }
+
+    #map { flex: 1; width: 100%; z-index: 1; }
+
+    /* Conteneur défilant pour plusieurs drones */
+    #drones-container {
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      max-height: 40vh;
+      overflow-y: auto;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 5px;
+    }
+
+    /* Carte individuelle pour un drone */
+    .drone-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+    }
+
+    .info-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--bg);
+    }
+    .info-row:last-of-type { border-bottom: none; }
+
+    .title-row {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+      margin-bottom: 4px;
+    }
+
+    .info-label { font-size: 0.85rem; font-weight: 600; flex-shrink: 0; }
+    
+    .info-item {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--text);
+      white-space: nowrap;
+    }
+    .info-item.accent { color: var(--accent); }
+    .info-item.muted  { color: var(--muted); }
+    .info-item.yellow { color: var(--yellow); }
+
+    .state-badge {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 3px;
+      letter-spacing: 1px;
+      background: var(--muted);
+      color: var(--bg);
+    }
+    .state-badge.BOOT   { background: var(--yellow); }
+    .state-badge.LOW    { background: var(--accent); }
+    .state-badge.HIGH   { background: var(--green); }
+    .state-badge.GROUND { background: var(--accent2); }
+
+    /* Zone de statut global au-dessus du panneau des drones */
+    #global-status {
+      background: var(--panel);
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 4px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Marqueurs Leaflet */
+    .drone-marker { width: 16px; height: 16px; position: relative; }
+    .drone-marker::before, .drone-marker::after { content: ''; position: absolute; background: #00d4ff; }
+    .drone-marker::before { width: 16px; height: 2px; top: 7px; left: 0; }
+    .drone-marker::after  { width: 2px; height: 16px; top: 0; left: 7px; }
+    .drone-dot { position: absolute; width: 4px; height: 4px; background: #ff6b35; border-radius: 50%; top: 6px; left: 6px; }
+
+    .user-marker {
+      width: 14px; height: 14px;
+      background: #4a90ff; border: 2px solid white; border-radius: 50%;
+      box-shadow: 0 0 8px rgba(74,144,255,0.8);
+      animation: userpulse 2s infinite;
+    }
+    @keyframes userpulse {
+      0%   { box-shadow: 0 0 4px rgba(74,144,255,0.8); }
+      50%  { box-shadow: 0 0 14px rgba(74,144,255,1); }
+      100% { box-shadow: 0 0 4px rgba(74,144,255,0.8); }
+    }
+
+    .leaflet-tile { filter: brightness(0.85) saturate(0.7) hue-rotate(180deg) invert(1); }
+    .leaflet-container { background: #0a0e1a; }
+
+    #center-btn {
+      position: absolute;
+      bottom: 20px; /* Remonté ou ajusté dynamiquement */
+      right: 16px;
+      z-index: 999;
+      background: var(--panel);
+      border: 1.5px solid var(--border);
+      color: var(--accent);
+      width: 40px; height: 40px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    /* Repositionnement du bouton centrer pour éviter qu'il ne passe sous le panneau */
+    .map-controls-wrapper { position: relative; width: 100%; height: 0; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">DL<span>X</span>R V6 <span>MULTI</span></div>
+    <button id="ble-btn" onclick="connectBLE()">⚡ AJOUTER RX</button>
+  </header>
+
+  <div id="map"></div>
+  
+  <div class="map-controls-wrapper">
+    <button id="center-btn" onclick="centerMap()" title="Recadrer sur tous les éléments">🎯</button>
+  </div>
+
+  <div id="global-status">PILOTE: RECHERCHE GPS... | RX CONNECTÉS: 0</div>
+  
+  <!-- Conteneur qui accueillera les cartes générées dynamiquement -->
+  <div id="drones-container">
+    <!-- Un message vide au départ -->
+    <div style="padding: 15px; text-align: center; color: var(--muted); font-size: 0.8rem;">
+      Aucun drone détecté pour le moment.
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+    const CHARACT_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+
+    // MULTI-RX : Liste pour stocker plusieurs récepteurs BLE simultanés
+    let connectedRX = []; 
+    
+    // MULTI-DRONE : Dictionnaire (Map) stockant les données et éléments UI/Map de chaque aéronef
+    let drones = {}; 
+    
+    // Variables du pilote
+    let userMarker = null;
+    let myLat = null, myLon = null;
+    let autoCenter = true;
+
+    // Initialisation Carte
+    const map = L.map('map', { center: [48.8566, 2.3522], zoom: 15, zoomControl: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM', maxZoom: 19 }).addTo(map);
+    L.control.zoom({ position: 'topleft' }).addTo(map);
+    map.on('dragstart', () => { autoCenter = false; });
+
+    const droneIcon = L.divIcon({ className: '', html: '<div class="drone-marker"><div class="drone-dot"></div></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
+    const userIcon = L.divIcon({ className: '', html: '<div class="user-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+
+    // -----------------------------------------
+    // GESTION DU PILOTE (HOME)
+    // -----------------------------------------
+    function startGeolocation() {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.watchPosition(pos => {
+        myLat = pos.coords.latitude;
+        myLon = pos.coords.longitude;
+        if (!userMarker) {
+          userMarker = L.marker([myLat, myLon], { icon: userIcon }).bindTooltip('📍 Moi', { direction: 'top' }).addTo(map);
+          map.setView([myLat, myLon], 15); 
+        } else {
+          userMarker.setLatLng([myLat, myLon]);
+        }
+        updateGlobalStatus();
+        
+        // Mettre à jour les lignes vers TOUS les drones connus
+        Object.keys(drones).forEach(id => updateLinkLine(id));
+      }, () => {}, { enableHighAccuracy: true, maximumAge: 2000 });
+    }
+
+    function updateGlobalStatus() {
+      const rxCount = connectedRX.length;
+      let gpsTxt = myLat ? `GPS: ${myLat.toFixed(5)}, ${myLon.toFixed(5)}` : "RECHERCHE GPS...";
+      document.getElementById('global-status').textContent = `PILOTE | ${gpsTxt} | RX CONNECTÉS: ${rxCount}`;
+    }
+
+    // -----------------------------------------
+    // GESTION MULTI-DRONES
+    // -----------------------------------------
+    function createNewDrone(id) {
+      // Vider le message "Aucun drone" s'il est là
+      const container = document.getElementById('drones-container');
+      if (Object.keys(drones).length === 0) container.innerHTML = '';
+
+      // Création de l'objet de données
+      drones[id] = {
+        rxCount: 0,
+        lastLat: null,
+        lastLon: null,
+        marker: null,
+        polyline: null,
+        linkLine: null,
+        tracePath: [],
+        color: getRandomColor() // Pour différencier les traces sur la carte
+      };
+
+      // Création du HTML (Panel)
+      const html = `
+        <div class="drone-panel" id="panel-${id}">
+          <div class="info-row title-row">
+            <span class="info-label accent" style="color:${drones[id].color}">✈️ ID: ${id}</span>
+            <span id="badge-${id}" class="state-badge">INIT</span>
+          </div>
+          <div class="info-row">
+            <span class="info-item" id="rssi-${id}">RSSI:--</span>
+            <span class="info-item accent" id="alt-${id}">Alt:-- m</span>
+            <span class="info-item" id="tr-${id}">Tr:0</span>
+            <span class="info-item yellow" id="dist-${id}">Dist:--</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Pos.</span>
+            <span class="info-item muted" id="pos-${id}">En attente...</span>
+          </div>
+        </div>
+      `;
+      container.insertAdjacentHTML('beforeend', html);
+    }
+
+    function getRandomColor() {
+      const colors = ['#00d4ff', '#ff6b35', '#00ff9d', '#ffd700', '#ff3b5c', '#b19cd9'];
+      const index = Object.keys(drones).length % colors.length;
+      return colors[index];
+    }
+
+    function updateLinkLine(id) {
+      const dr = drones[id];
+      if (myLat === null || dr.lastLat === null) return;
+      
+      const pts = [[myLat, myLon], [dr.lastLat, dr.lastLon]];
+      if (dr.linkLine) {
+        dr.linkLine.setLatLngs(pts);
+      } else {
+        dr.linkLine = L.polyline(pts, { color: '#ffd700', weight: 1, opacity: 0.4, dashArray: '4 8' }).addTo(map);
+      }
+    }
+
+    function updateMap(id, lat, lon) {
+      const dr = drones[id];
+      const latlng = [lat, lon];
+      
+      // Marqueur
+      if (!dr.marker) {
+        dr.marker = L.marker(latlng, { icon: droneIcon }).bindTooltip(`🎯 ${id}`, { permanent: true, direction: 'right', className: 'drone-label' }).addTo(map);
+      } else {
+        dr.marker.setLatLng(latlng);
+      }
+      
+      // Trace
+      dr.tracePath.push(latlng);
+      if (dr.polyline) {
+        dr.polyline.setLatLngs(dr.tracePath);
+      } else {
+        dr.polyline = L.polyline(dr.tracePath, { color: dr.color, weight: 2, opacity: 0.7 }).addTo(map);
+      }
+      
+      if (autoCenter) centerMap();
+      updateLinkLine(id);
+    }
+
+    function centerMap() {
+      autoCenter = true;
+      let bounds = [];
+      if (myLat !== null) bounds.push([myLat, myLon]);
+      
+      Object.keys(drones).forEach(id => {
+        if (drones[id].lastLat !== null) {
+          bounds.push([drones[id].lastLat, drones[id].lastLon]);
+        }
+      });
+
+      if (bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
+      }
+    }
+
+    // -----------------------------------------
+    // TRAITEMENT DES DONNÉES (JSON)
+    // -----------------------------------------
+    function handleData(json) {
+      try {
+        const d = JSON.parse(json);
+        
+        // 🚨 IMPORTANT : On cherche un drone_id, sinon on l'appelle "Inconnu"
+        const id = d.drone_id || d.id || "Inconnu";
+
+        if (!drones[id]) {
+          createNewDrone(id);
+        }
+
+        const dr = drones[id];
+        dr.rxCount++;
+        
+        const etat = (d.etat || '--').toUpperCase();
+        const alt  = Math.max(0, parseFloat(d.alt  || 0)).toFixed(0);
+        const dist = parseFloat(d.dist || 0);
+        const rssi = parseFloat(d.rssi || 0).toFixed(0);
+        const lat  = parseFloat(d.lat  || 0);
+        const lon  = parseFloat(d.lon  || 0);
+
+        // Mise à jour de l'UI de la carte spécifique
+        const badge = document.getElementById(`badge-${id}`);
+        badge.textContent = etat;
+        badge.className   = 'state-badge ' + etat;
+
+        document.getElementById(`rssi-${id}`).textContent = `RSSI:${rssi}`;
+        document.getElementById(`alt-${id}`).textContent  = `Alt:${alt}m`;
+        document.getElementById(`dist-${id}`).textContent = dist < 1000 ? `${dist.toFixed(0)}m` : `${(dist / 1000).toFixed(2)}km`;
+        document.getElementById(`tr-${id}`).textContent   = `Tr:${dr.rxCount}`;
+
+        if (lat !== 0 && lon !== 0) {
+          dr.lastLat = lat;
+          dr.lastLon = lon;
+          document.getElementById(`pos-${id}`).textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+          updateMap(id, lat, lon);
+        }
+
+      } catch(e) {
+        console.error("Erreur Parsing JSON:", e);
+      }
+    }
+
+    // -----------------------------------------
+    // BLUETOOTH (MULTI-CONNEXIONS)
+    // -----------------------------------------
+    async function connectBLE() {
+      if (!navigator.bluetooth) {
+        alert('Web Bluetooth non supporté !'); return;
+      }
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: 'DLXR_RX' }], // Permet de trouver DLXR_RX_1, DLXR_RX_2...
+          optionalServices: [SERVICE_UUID]
+        });
+        
+        device.addEventListener('gattserverdisconnected', () => {
+          connectedRX = connectedRX.filter(d => d.id !== device.id);
+          updateGlobalStatus();
+        });
+
+        const server  = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        const charact = await service.getCharacteristic(CHARACT_UUID);
+        
+        await charact.startNotifications();
+        charact.addEventListener('characteristicvaluechanged', e => {
+          handleData(new TextDecoder().decode(e.target.value));
+        });
+
+        // Ajouter à la liste des RX connectés
+        connectedRX.push(device);
+        
+        const btn = document.getElementById('ble-btn');
+        btn.textContent = `+ AJOUTER RX (${connectedRX.length})`;
+        btn.classList.add('connected');
+        
+        updateGlobalStatus();
+        
+      } catch(e) {
+        console.error('Erreur BLE:', e);
+      }
+    }
+
+    // Démarrage
+    startGeolocation();
+  </script>
+</body>
+</html>
