@@ -9,7 +9,7 @@
 // ---------------------------------------------------------
 // Le nom DOIT commencer par "DLXR_RX" pour être vu par l'interface Web
 #define DEVICE_NAME "DLXR_RX_1" 
-#define DRONE_ID    "Mavic_Pro_1" // Identifiant unique du drone affiché sur l'UI
+#define DRONE_ID    "fil_blanc" // Identifiant unique du drone affiché sur l'UI
 
 // Les UUIDs doivent correspondre EXACTEMENT à ceux du code JavaScript
 #define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -59,7 +59,7 @@ void setup() {
                       BLECharacteristic::PROPERTY_NOTIFY
                     );
 
-  // 🚨 Indispensable pour que Web Bluetooth reçoive les notifications (StartNotifications)
+  //  Indispensable pour que Web Bluetooth reçoive les notifications (StartNotifications)
   pCharacteristic->addDescriptor(new BLE2902());
 
   // 5. Démarrage du service et de l'annonce (Advertising)
