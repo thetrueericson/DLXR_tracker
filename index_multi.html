@@ -444,30 +444,31 @@
       document.getElementById('ui-cross').textContent = `Travers: ${absCrosswind.toFixed(1)} km/h`;
       document.getElementById('wind-arrow-ui').style.transform = `rotate(${windDir + 180}deg)`;
 
-      // --- DESSIN DES VECTEURS GPS SUR LA CARTE ---
-      windVectorLayer.clearLayers();
-      const windDestinationBearing = windDir + 180; // Direction où souffle le vent
+     // --- DESSIN DES VECTEURS GPS SUR LA CARTE ---
+windVectorLayer.clearLayers();
+const windDestinationBearing = windDir + 180; 
 
-      if (windSpeed > 0) {
-        // La couleur de la flèche vent prend la couleur de l'alerte pour une lecture visuelle immédiate sur la carte
-        const windDestCoords = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, windSpeed * CONFIG.windScale, windDestinationBearing);
-        L.polyline([[CONFIG.origin.lat, CONFIG.origin.lon], windDestCoords], {color: alertColor, weight: 4}).addTo(windVectorLayer);
-        
-        // Pointe flèche
-        const barb1 = computeDestinationPoint(windDestCoords[0], windDestCoords[1], 10, windDestinationBearing + 150);
-        const barb2 = computeDestinationPoint(windDestCoords[0], windDestCoords[1], 10, windDestinationBearing - 150);
-        L.polygon([windDestCoords, barb1, barb2], {color: alertColor, fillColor: alertColor, fillOpacity: 1, weight: 1}).addTo(windVectorLayer);
-      }
+if (windSpeed > 0) {
+  // Vecteur global (échelle: 1 km/h = 1.5m sur la carte)
+  const windDestCoords = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, windSpeed * 1.5, windDestinationBearing);
+  L.polyline([[CONFIG.origin.lat, CONFIG.origin.lon], windDestCoords], {color: alertColor, weight: 4}).addTo(windVectorLayer);
+  
+  // Pointe de la flèche
+  const barbLength = 4;
+  const barb1 = computeDestinationPoint(windDestCoords[0], windDestCoords[1], barbLength, windDestinationBearing + 160); 
+  const barb2 = computeDestinationPoint(windDestCoords[0], windDestCoords[1], barbLength, windDestinationBearing - 160);
+  L.polygon([windDestCoords, barb1, barb2], {color: alertColor, fillColor: alertColor, fillOpacity: 1, weight: 1}).addTo(windVectorLayer);
+}
 
-      if (absCrosswind > 0) {
-        const crosswindDirection = crosswind > 0 ? (CONFIG.runway1.heading - 90) : (CONFIG.runway1.heading + 90);
-        const crossDestCoords = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, absCrosswind * CONFIG.windScale, crosswindDirection);
-        L.polyline([[CONFIG.origin.lat, CONFIG.origin.lon], crossDestCoords], {color: '#ff3b5c', weight: 6, lineCap: 'round'}).addTo(windVectorLayer);
-      }
+if (absCrosswind > 0) {
+  // Vecteur traversier
+  const crosswindDirection = crosswind > 0 ? (CONFIG.runway1.heading - 90) : (CONFIG.runway1.heading + 90);
+  const crossDestCoords = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, absCrosswind * 1.5, crosswindDirection);
+  L.polyline([[CONFIG.origin.lat, CONFIG.origin.lon], crossDestCoords], {color: '#ff3b5c', weight: 6, lineCap: 'round'}).addTo(windVectorLayer);
+}
 
-      // Origine centrale
-      L.circleMarker([CONFIG.origin.lat, CONFIG.origin.lon], {radius: 5, color: 'white', weight: 1.5, fillColor: alertColor, fillOpacity: 1}).addTo(windVectorLayer);
-
+// Origine centrale
+L.circleMarker([CONFIG.origin.lat, CONFIG.origin.lon], {radius: 5, color: 'white', weight: 1.5, fillColor: alertColor, fillOpacity: 1}).addTo(windVectorLayer);
       // Met à jour la position du soleil
       updateSunPosition(targetDate);
     }
