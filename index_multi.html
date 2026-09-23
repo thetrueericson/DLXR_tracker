@@ -1,62 +1,41 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <!-- Encodage standard pour gérer les caractères spéciaux (accents, etc.) -->
   <meta charset="UTF-8" />
-  
-  <!-- Empêche le zoom tactile de l'utilisateur (pinch-to-zoom) pour donner une sensation d'application native -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>DLXR Tracker V6.1 - MULTI OPTIMISÉ</title>
   
-  <title>DLXR Tracker V6 - MULTI</title>
-  
-  <!-- Bibliothèque Leaflet pour la cartographie -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  
-  <!-- Polices Google : Share Tech Mono (HUD/Chiffres) et Exo 2 (Texte standard) -->
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet" />
   
   <style>
-    /* 
-      VARIABLES CSS 
-      Centralisation des couleurs et polices pour faciliter la maintenance et les thèmes.
-    */
     :root {
-      --bg:        #0a0e1a; /* Fond sombre général */
-      --panel:     #0f1628; /* Fond des conteneurs (header, cartes drones) */
-      --border:    #1e2d4a; /* Lignes de séparation */
-      --accent:    #00d4ff; /* Cyan principal */
-      --accent2:   #ff6b35; /* Orange d'alerte */
-      --green:     #00ff9d; /* Vert de validation/connexion */
-      --yellow:    #ffd700; /* Jaune pour les avertissements/distances */
-      --red:       #ff3b5c; /* Rouge d'erreur (non utilisé ici mais prêt) */
-      --text:      #e0eeff; /* Texte blanc/bleuté */
-      --muted:     #4a6080; /* Texte gris/effacé */
+      --bg:        #0a0e1a;
+      --panel:     #0f1628;
+      --border:    #1e2d4a;
+      --accent:    #00d4ff;
+      --accent2:   #ff6b35;
+      --green:     #00ff9d;
+      --yellow:    #ffd700;
+      --red:       #ff3b5c;
+      --text:      #e0eeff;
+      --muted:     #4a6080;
       --mono:      'Share Tech Mono', monospace;
       --sans:      'Exo 2', sans-serif;
     }
 
-    /* Reset de base pour annuler les marges par défaut des navigateurs */
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* 
-      Structure du corps
-      L'utilisation de 'flex' en colonne permet d'empiler proprement 
-      le Header, la Carte, et la Zone de Drones sans déborder de l'écran (100dvh).
-    */
     body {
       background: var(--bg);
       color: var(--text);
       font-family: var(--sans);
-      height: 100dvh; /* dvh = Dynamic Viewport Height, corrige les soucis de barre d'adresse sur iOS/Android */
+      height: 100dvh;
       display: flex;
       flex-direction: column;
-      overflow: hidden; /* Empêche le scroll global de la page entière */
+      overflow: hidden;
     }
 
-    /* 
-      EN-TÊTE (Header)
-      flex-shrink: 0 garantit que le header ne sera jamais écrasé si la carte prend trop de place.
-    */
     header {
       display: flex;
       align-items: center;
@@ -75,9 +54,8 @@
       letter-spacing: 3px;
       text-transform: uppercase;
     }
-    .logo span { color: var(--accent2); } /* Le "X" et "MULTI" en couleur secondaire */
+    .logo span { color: var(--accent2); }
 
-    /* Bouton d'ajout Bluetooth */
     #ble-btn {
       background: transparent;
       border: 1.5px solid var(--accent);
@@ -93,30 +71,20 @@
     #ble-btn:hover { background: var(--accent); color: var(--bg); }
     #ble-btn.connected { border-color: var(--green); color: var(--green); }
 
-    /* 
-      CARTE (Map)
-      flex: 1 lui dit de prendre TOUTE la place disponible restante 
-      entre le header et le panneau inférieur.
-    */
     #map { flex: 1; width: 100%; z-index: 1; }
 
-    /* 
-      PANNEAU MULTI-DRONES 
-      Gère le défilement (overflow-y: auto) si beaucoup de drones sont connectés.
-    */
     #drones-container {
       background: var(--bg);
       border-top: 1px solid var(--border);
-      max-height: 40vh; /* Ne dépasse jamais 40% de la hauteur de l'écran */
+      max-height: 40vh;
       overflow-y: auto;
       z-index: 1000;
       display: flex;
       flex-direction: column;
-      gap: 5px; /* Espace entre chaque carte de drone */
+      gap: 5px;
       padding: 5px;
     }
 
-    /* CARTE INDIVIDUELLE (Pour chaque drone) */
     .drone-panel {
       background: var(--panel);
       border: 1px solid var(--border);
@@ -124,11 +92,10 @@
       padding: 8px 12px;
     }
 
-    /* Lignes d'informations dans une carte drone */
     .info-row {
       display: flex;
       align-items: center;
-      justify-content: space-between; /* Aligne les éléments aux extrémités */
+      justify-content: space-between;
       gap: 10px;
       padding: 4px 0;
       border-bottom: 1px solid var(--bg);
@@ -147,14 +114,12 @@
       font-family: var(--mono);
       font-size: 0.75rem;
       color: var(--text);
-      white-space: nowrap; /* Empêche le texte de revenir à la ligne */
+      white-space: nowrap;
     }
-    /* Utilitaires de couleur rapide */
     .info-item.accent { color: var(--accent); }
     .info-item.muted  { color: var(--muted); }
     .info-item.yellow { color: var(--yellow); }
 
-    /* Étiquettes d'état (BOOT, LOW, HIGH...) */
     .state-badge {
       font-family: var(--mono);
       font-size: 0.65rem;
@@ -164,13 +129,14 @@
       letter-spacing: 1px;
       background: var(--muted);
       color: var(--bg);
+      transition: background 0.3s;
     }
-    .state-badge.BOOT   { background: var(--yellow); }
-    .state-badge.LOW    { background: var(--accent); }
-    .state-badge.HIGH   { background: var(--green); }
-    .state-badge.GROUND { background: var(--accent2); }
+    .state-badge.BOOT    { background: var(--yellow); }
+    .state-badge.LOW     { background: var(--accent); }
+    .state-badge.HIGH    { background: var(--green); }
+    .state-badge.GROUND  { background: var(--accent2); }
+    .state-badge.OFFLINE { background: var(--red); color: white; } /* Nouvel état hors ligne */
 
-    /* Bandeau récapitulatif juste au-dessus des drones */
     #global-status {
       background: var(--panel);
       font-family: var(--mono);
@@ -181,17 +147,12 @@
       border-top: 1px solid var(--border);
     }
 
-    /* 
-      MARQUEURS LEAFLET (CSS PERSONNALISÉ) 
-      Viseur cyan pour les drones.
-    */
     .drone-marker { width: 16px; height: 16px; position: relative; }
     .drone-marker::before, .drone-marker::after { content: ''; position: absolute; background: #00d4ff; }
     .drone-marker::before { width: 16px; height: 2px; top: 7px; left: 0; }
     .drone-marker::after  { width: 2px; height: 16px; top: 0; left: 7px; }
     .drone-dot { position: absolute; width: 4px; height: 4px; background: #ff6b35; border-radius: 50%; top: 6px; left: 6px; }
 
-    /* Point bleu pulsant pour le pilote */
     .user-marker {
       width: 14px; height: 14px;
       background: #4a90ff; border: 2px solid white; border-radius: 50%;
@@ -204,11 +165,9 @@
       100% { box-shadow: 0 0 4px rgba(74,144,255,0.8); }
     }
 
-    /* Mode sombre pour les tuiles de la carte OpenStreetMap */
     .leaflet-tile { filter: brightness(0.85) saturate(0.7) hue-rotate(180deg) invert(1); }
     .leaflet-container { background: #0a0e1a; }
 
-    /* Bouton de recadrage dynamique */
     #center-btn {
       position: absolute;
       bottom: 20px;
@@ -226,101 +185,84 @@
       justify-content: center;
     }
     
-    /* 
-      Astuce de layout : un conteneur de hauteur 0 inséré entre la map et le footer 
-      permet d'ancrer le bouton #center-btn au-dessus du panneau des drones.
-    */
     .map-controls-wrapper { position: relative; width: 100%; height: 0; }
   </style>
 </head>
 <body>
 
-  <!-- HEADER -->
   <header>
-    <div class="logo">DL<span>X</span>R V6 <span>MULTI</span></div>
-    <!-- Clic pour ajouter un nouveau récepteur (Multi-RX) -->
+    <div class="logo">DL<span>X</span>R V6.1 <span>MULTI</span></div>
     <button id="ble-btn" onclick="connectBLE()">⚡ AJOUTER RX</button>
   </header>
 
-  <!-- MAP -->
   <div id="map"></div>
   
-  <!-- BOUTON RECENTRER -->
   <div class="map-controls-wrapper">
-    <button id="center-btn" onclick="centerMap()" title="Recadrer sur tous les éléments">🎯</button>
+    <button id="center-btn" onclick="forceCenterMap()" title="Recadrer sur tous les éléments">🎯</button>
   </div>
 
-  <!-- STATUT GLOBAL -->
   <div id="global-status">PILOTE: RECHERCHE GPS... | RX CONNECTÉS: 0</div>
   
-  <!-- CONTENEUR DES CARTES DRONES -->
-  <!-- Sera peuplé dynamiquement en JS avec createElement/insertAdjacentHTML -->
   <div id="drones-container">
     <div style="padding: 15px; text-align: center; color: var(--muted); font-size: 0.8rem;">
       Aucun drone détecté pour le moment.
     </div>
   </div>
 
-  <!-- SCRIPT LEAFLET -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
   <script>
-    // UUID Bluetooth LE standards pour ce projet
     const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
     const CHARACT_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 
-    // MULTI-RX : Tableau conservant la trace de toutes les instances d'appareils BLE connectés
     let connectedRX = []; 
-    
-    // MULTI-DRONE : Dictionnaire central de l'application. 
-    // Clé = ID du drone. Valeur = Objet contenant toutes ses données (trace, position, UI).
     let drones = {}; 
     
-    // Variables locales pour le pilote
     let userMarker = null;
     let myLat = null, myLon = null;
-    let autoCenter = true; // Si vrai, la carte englobe tous les aéronefs à chaque mise à jour
+    let autoCenter = true; 
+    let centerThrottleTimeout = null; // Variable pour éviter le "Map Jittering"
 
-    // INITIALISATION DE LA CARTE
     const map = L.map('map', { center: [48.8566, 2.3522], zoom: 15, zoomControl: false });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM', maxZoom: 19 }).addTo(map);
     L.control.zoom({ position: 'topleft' }).addTo(map);
     
-    // Désactive le recentrage automatique si l'utilisateur navigue manuellement
     map.on('dragstart', () => { autoCenter = false; });
 
-    // Modèles d'icônes
     const droneIcon = L.divIcon({ className: '', html: '<div class="drone-marker"><div class="drone-dot"></div></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
     const userIcon = L.divIcon({ className: '', html: '<div class="user-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+
+    // -----------------------------------------
+    // 🛡️ SÉCURITÉ : Nettoyage des IDs
+    // -----------------------------------------
+    // Remplace tout ce qui n'est pas alphanumérique (ou - / _) par un underscore.
+    // Empêche l'injection de balises <script> si le drone envoie des données corrompues.
+    function sanitizeId(rawId) {
+      if (!rawId) return "Inconnu";
+      return String(rawId).replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
 
     // -----------------------------------------
     // 📍 GESTION DU PILOTE (HOME)
     // -----------------------------------------
     function startGeolocation() {
       if (!navigator.geolocation) return;
-      
-      // watchPosition traque le pilote en continu
       navigator.geolocation.watchPosition(pos => {
         myLat = pos.coords.latitude;
         myLon = pos.coords.longitude;
         
         if (!userMarker) {
-          // Premier point GPS reçu
           userMarker = L.marker([myLat, myLon], { icon: userIcon }).bindTooltip('📍 Moi', { direction: 'top' }).addTo(map);
           map.setView([myLat, myLon], 15); 
         } else {
-          // Mise à jour de la position
           userMarker.setLatLng([myLat, myLon]);
         }
         
         updateGlobalStatus();
-        
-        // Comme le pilote a bougé, il faut redessiner les pointillés jaunes vers *tous* les drones
         Object.keys(drones).forEach(id => updateLinkLine(id));
       }, () => {}, { enableHighAccuracy: true, maximumAge: 2000 });
     }
 
-    // Rafraîchit le bandeau textuel intermédiaire
     function updateGlobalStatus() {
       const rxCount = connectedRX.length;
       let gpsTxt = myLat ? `GPS: ${myLat.toFixed(5)}, ${myLon.toFixed(5)}` : "RECHERCHE GPS...";
@@ -330,15 +272,10 @@
     // -----------------------------------------
     // ✈️ GESTION MULTI-DRONES
     // -----------------------------------------
-    
-    // Fonction appelée la première fois qu'un ID inconnu est détecté
     function createNewDrone(id) {
       const container = document.getElementById('drones-container');
-      
-      // Si c'est le premier drone, on efface le message "Aucun drone"
       if (Object.keys(drones).length === 0) container.innerHTML = '';
 
-      // 1. Enregistrement en mémoire
       drones[id] = {
         rxCount: 0,
         lastLat: null,
@@ -347,12 +284,10 @@
         polyline: null,
         linkLine: null,
         tracePath: [],
-        color: getRandomColor() // Attribue une couleur unique (cyan, orange, vert, etc.)
+        color: getRandomColor(),
+        lastSeen: Date.now() // Utilisé par le Watchdog pour détecter les pertes de connexion
       };
 
-      // 2. Génération de l'interface utilisateur pour ce drone
-      // On utilise l'ID en suffixe dans les attributs HTML (ex: id="alt-MyDrone") 
-      // pour pouvoir les cibler facilement plus tard.
       const html = `
         <div class="drone-panel" id="panel-${id}">
           <div class="info-row title-row">
@@ -371,40 +306,32 @@
           </div>
         </div>
       `;
-      // Insère le HTML à la fin du conteneur sans écraser les autres cartes
       container.insertAdjacentHTML('beforeend', html);
     }
 
-    // Attribue séquentiellement une couleur à chaque nouveau drone
     function getRandomColor() {
       const colors = ['#00d4ff', '#ff6b35', '#00ff9d', '#ffd700', '#ff3b5c', '#b19cd9'];
       const index = Object.keys(drones).length % colors.length;
       return colors[index];
     }
 
-    // Met à jour la ligne en pointillé entre le pilote et UN drone spécifique
     function updateLinkLine(id) {
       const dr = drones[id];
-      if (myLat === null || dr.lastLat === null) return; // Ignore si on n'a pas les deux points
+      if (myLat === null || dr.lastLat === null) return;
       
       const pts = [[myLat, myLon], [dr.lastLat, dr.lastLon]];
-      
       if (dr.linkLine) {
-        dr.linkLine.setLatLngs(pts); // Modifie la ligne existante
+        dr.linkLine.setLatLngs(pts);
       } else {
-        // Crée la ligne (tirets de 4px séparés de 8px)
         dr.linkLine = L.polyline(pts, { color: '#ffd700', weight: 1, opacity: 0.4, dashArray: '4 8' }).addTo(map);
       }
     }
 
-    // Déplace le drone sur la carte et dessine son parcours
     function updateMap(id, lat, lon) {
       const dr = drones[id];
       const latlng = [lat, lon];
       
-      // Mise à jour ou création du marqueur
       if (!dr.marker) {
-        // Le bindTooltip permanent permet de toujours voir l'ID du drone à côté de son curseur
         dr.marker = L.marker(latlng, { icon: droneIcon })
           .bindTooltip(`🎯 ${id}`, { permanent: true, direction: 'right', className: 'drone-label' })
           .addTo(map);
@@ -412,7 +339,6 @@
         dr.marker.setLatLng(latlng);
       }
       
-      // Ajout de la trace dans l'historique de ce drone spécifique
       dr.tracePath.push(latlng);
       if (dr.polyline) {
         dr.polyline.setLatLngs(dr.tracePath);
@@ -420,31 +346,67 @@
         dr.polyline = L.polyline(dr.tracePath, { color: dr.color, weight: 2, opacity: 0.7 }).addTo(map);
       }
       
-      // Si l'utilisateur n'a pas forcé le mode manuel, on recalcule le zoom global
-      if (autoCenter) centerMap();
+      // Demande un recentrage de manière optimisée (Throttling)
+      requestCenterMap();
       updateLinkLine(id);
     }
 
-    // Fonction globale pour recadrer la caméra afin de voir TOUS les éléments (pilote + drones)
-    function centerMap() {
+    // -----------------------------------------
+    // ⚙️ OPTIMISATION : Throttling du centrage (Anti-Jitter)
+    // -----------------------------------------
+    // Cette fonction garantit que "fitBounds" n'est appelé qu'une fois par seconde max,
+    // même si on reçoit 50 trames par seconde. Cela libère énormément le processeur.
+    function requestCenterMap() {
+      if (!autoCenter) return;
+      if (!centerThrottleTimeout) {
+        centerThrottleTimeout = setTimeout(() => {
+          executeCenterMap();
+          centerThrottleTimeout = null;
+        }, 1000); // Délai de 1000ms (1 seconde) entre chaque recalibrage de caméra
+      }
+    }
+
+    // Bouton manuel : on force l'exécution immédiate
+    function forceCenterMap() {
       autoCenter = true;
+      executeCenterMap();
+    }
+
+    function executeCenterMap() {
       let bounds = [];
-      
-      // Ajoute la position du pilote dans l'équation
       if (myLat !== null) bounds.push([myLat, myLon]);
       
-      // Ajoute la position de chaque drone connu
       Object.keys(drones).forEach(id => {
         if (drones[id].lastLat !== null) {
           bounds.push([drones[id].lastLat, drones[id].lastLon]);
         }
       });
 
-      // fitBounds adapte automatiquement le niveau de zoom de Leaflet
       if (bounds.length > 0) {
+        // L'animation est gardée, mais comme elle se déclenche au max 1x par seconde, 
+        // le rendu reste fluide et naturel.
         map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
       }
     }
+
+    // -----------------------------------------
+    // 🐕 WATCHDOG : Détection des déconnexions (NOUVEAU)
+    // -----------------------------------------
+    // Tourne en tâche de fond toutes les 2 secondes
+    setInterval(() => {
+      const now = Date.now();
+      Object.keys(drones).forEach(id => {
+        const dr = drones[id];
+        // Si aucune trame n'a été reçue depuis plus de 4 secondes (4000ms)
+        if (now - dr.lastSeen > 4000) {
+          const badge = document.getElementById(`badge-${id}`);
+          if (badge && badge.textContent !== 'OFFLINE') {
+            badge.textContent = 'OFFLINE';
+            badge.className = 'state-badge OFFLINE'; // Déclenche la couleur rouge CSS
+          }
+        }
+      });
+    }, 2000);
 
     // -----------------------------------------
     // ⚙️ TRAITEMENT DES DONNÉES ENTRANTES
@@ -453,19 +415,17 @@
       try {
         const d = JSON.parse(json);
         
-        // 🚨 NOUVEAUTÉ V6 : Identification du drone émetteur
-        const id = d.drone_id || d.id || "Inconnu";
+        // 🔒 Utilisation de la fonction de nettoyage contre les XSS
+        const id = sanitizeId(d.drone_id || d.id);
 
-        // Détection d'un nouveau drone à la volée
         if (!drones[id]) {
           createNewDrone(id);
         }
 
-        // On pointe sur le bon objet dans le dictionnaire
         const dr = drones[id];
         dr.rxCount++;
+        dr.lastSeen = Date.now(); // ⏱️ Reset du Watchdog pour ce drone
         
-        // Extraction sécurisée des données
         const etat = (d.etat || '--').toUpperCase();
         const alt  = Math.max(0, parseFloat(d.alt  || 0)).toFixed(0);
         const dist = parseFloat(d.dist || 0);
@@ -473,7 +433,6 @@
         const lat  = parseFloat(d.lat  || 0);
         const lon  = parseFloat(d.lon  || 0);
 
-        // Mise à jour DOM ciblée en utilisant l'ID
         const badge = document.getElementById(`badge-${id}`);
         badge.textContent = etat;
         badge.className   = 'state-badge ' + etat;
@@ -483,7 +442,6 @@
         document.getElementById(`dist-${id}`).textContent = dist < 1000 ? `${dist.toFixed(0)}m` : `${(dist / 1000).toFixed(2)}km`;
         document.getElementById(`tr-${id}`).textContent   = `Tr:${dr.rxCount}`;
 
-        // Si position valide, on met à jour le tracking GPS
         if (lat !== 0 && lon !== 0) {
           dr.lastLat = lat;
           dr.lastLon = lon;
@@ -504,35 +462,29 @@
         alert('Web Bluetooth non supporté !'); return;
       }
       try {
-        // requestDevice avec namePrefix permet de lister DLXR_RX_1, DLXR_RX_2, etc.
         const device = await navigator.bluetooth.requestDevice({
           filters: [{ namePrefix: 'DLXR_RX' }], 
           optionalServices: [SERVICE_UUID]
         });
         
-        // Gestion de la déconnexion inopinée d'un RX spécifique
         device.addEventListener('gattserverdisconnected', () => {
-          // Retire l'appareil déconnecté du tableau des RX
           connectedRX = connectedRX.filter(d => d.id !== device.id);
           updateGlobalStatus();
-          // Note : on garde volontairement le drone sur la carte (pour retrouver sa dernière position)
+          // Le watchdog gèrera automatiquement le passage en OFFLINE des drones 
+          // associés à ce RX car ils arrêteront d'émettre des trames.
         });
 
-        // Protocole de connexion GATT standard
         const server  = await device.gatt.connect();
         const service = await server.getPrimaryService(SERVICE_UUID);
         const charact = await service.getCharacteristic(CHARACT_UUID);
         
-        // Abonnement au flux de télémétrie de CET appareil
         await charact.startNotifications();
         charact.addEventListener('characteristicvaluechanged', e => {
           handleData(new TextDecoder().decode(e.target.value));
         });
 
-        // Ajout à la liste des récepteurs actifs
         connectedRX.push(device);
         
-        // Mise à jour visuelle du bouton principal
         const btn = document.getElementById('ble-btn');
         btn.textContent = `+ AJOUTER RX (${connectedRX.length})`;
         btn.classList.add('connected');
@@ -544,7 +496,6 @@
       }
     }
 
-    // Démarrage initial (GPS du téléphone)
     startGeolocation();
   </script>
 </body>
