@@ -18,7 +18,7 @@
 // Le fil RX du GPS va sur la broche TX de l'ESP32-C3
 #define GPS_RX_PIN 20 
 #define GPS_TX_PIN 21 
-#define GPS_BAUD 9600 
+#define GPS_BAUD 57600 
 
 SX1262 radio = new Module(NSS, DIO1, NRST, BUSY);
 TinyGPSPlus gps;
