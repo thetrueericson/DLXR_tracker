@@ -3,11 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>DLXR Tracker V6.2 - MULTI SATELLITE</title>
+  <title>DLXR Tracker V6.3 - MULTI SATELLITE & TWR</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet" />
   
+  <!-- Ajout de SunCalc pour le calcul astronomique de la position du soleil -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
+
   <style>
     :root {
       --bg:        #0a0e1a;
@@ -73,37 +76,92 @@
 
     #map { flex: 1; width: 100%; z-index: 1; position: relative; }
 
-    /* VUE SATELLITE & WIDGET MÉTÉO */
+    /* VUE SATELLITE & WIDGET MÉTÉO (Haut Droit) */
     .leaflet-tile { filter: brightness(1.1) saturate(1.2); }
     .leaflet-container { background: #0a0e1a; }
 
     #wind-widget {
       position: absolute;
-      top: 70px;
+      top: 10px;
       right: 16px;
       z-index: 999;
       background: rgba(15, 22, 40, 0.85);
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 8px 12px;
+      padding: 6px 10px;
       display: flex;
       align-items: center;
       gap: 12px;
       backdrop-filter: blur(4px);
     }
-    .wind-arrow {
-      width: 24px;
-      height: 24px;
-      transition: transform 0.5s ease;
-    }
-    .wind-data {
-      display: flex;
-      flex-direction: column;
-    }
-    .wind-text { font-family: var(--mono); font-size: 0.75rem; }
-    .crosswind { color: var(--accent2); font-weight: bold; }
+    .wind-arrow { width: 18px; height: 18px; transition: transform 0.5s ease; }
+    .wind-data { display: flex; flex-direction: column; }
+    .wind-text { font-family: var(--mono); font-size: 0.7rem; color: #fff; }
+    .crosswind { color: var(--red); font-weight: bold; }
 
-    /* PANNEAUX ET BOUTONS */
+    /* STYLES DES ÉLÉMENTS SUR LA CARTE (Labels, Vent, Soleil) */
+    .runway-label {
+      background: #1e2d4a;
+      color: white;
+      border: 1px solid #4a90ff;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: bold;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+    
+    .runway-label.secondary {
+      background: #2a2a2a;
+      border-color: #666;
+      color: #ccc;
+    }
+
+    /* Vecteur vent dynamique sur la piste */
+    .onmap-wind-container {
+      position: relative;
+      width: 40px; height: 40px;
+      transform: translate(-50%, -50%);
+    }
+    .onmap-wind-center {
+      position: absolute; top: 18px; left: 18px;
+      width: 6px; height: 6px;
+      background: white; border: 1.5px solid black; border-radius: 50%;
+      z-index: 3;
+    }
+    /* Flèche bleue (Vent global) */
+    .onmap-wind-arrow {
+      position: absolute; top: 20px; left: 20px;
+      width: 2px; height: 40px;
+      background: #00d4ff;
+      transform-origin: top center;
+      z-index: 2;
+    }
+    .onmap-wind-arrow::after {
+      content: ''; position: absolute; bottom: -4px; left: -4px;
+      border-left: 5px solid transparent; border-right: 5px solid transparent;
+      border-top: 8px solid #00d4ff;
+    }
+    /* Barre rouge (Traversier) */
+    .onmap-crosswind-bar {
+      position: absolute; top: 20px; left: 20px;
+      height: 3px; background: #ff3b5c;
+      transform-origin: left center;
+      z-index: 1;
+    }
+
+    /* Icône Soleil */
+    .sun-marker {
+      width: 14px; height: 14px;
+      background: #ffb700;
+      border: 2px solid white;
+      border-radius: 50%;
+      box-shadow: 0 0 10px #ffb700;
+    }
+
+    /* PANNEAUX DRONES (Bas) */
     #drones-container {
       background: var(--bg);
       border-top: 1px solid var(--border);
@@ -124,43 +182,21 @@
     }
 
     .info-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 4px 0;
-      border-bottom: 1px solid var(--bg);
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 4px 0; border-bottom: 1px solid var(--bg);
     }
     .info-row:last-of-type { border-bottom: none; }
-
-    .title-row {
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 6px;
-      margin-bottom: 4px;
-    }
-
+    .title-row { border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 4px; }
     .info-label { font-size: 0.85rem; font-weight: 600; flex-shrink: 0; }
-    
-    .info-item {
-      font-family: var(--mono);
-      font-size: 0.75rem;
-      color: var(--text);
-      white-space: nowrap;
-    }
+    .info-item { font-family: var(--mono); font-size: 0.75rem; color: var(--text); white-space: nowrap; }
     .info-item.accent { color: var(--accent); }
     .info-item.muted  { color: var(--muted); }
     .info-item.yellow { color: var(--yellow); }
 
     .state-badge {
-      font-family: var(--mono);
-      font-size: 0.65rem;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 3px;
-      letter-spacing: 1px;
-      background: var(--muted);
-      color: var(--bg);
-      transition: background 0.3s;
+      font-family: var(--mono); font-size: 0.65rem; font-weight: 600;
+      padding: 2px 8px; border-radius: 3px; letter-spacing: 1px;
+      background: var(--muted); color: var(--bg); transition: background 0.3s;
     }
     .state-badge.BOOT    { background: var(--yellow); }
     .state-badge.LOW     { background: var(--accent); }
@@ -169,15 +205,11 @@
     .state-badge.OFFLINE { background: var(--red); color: white; }
 
     #global-status {
-      background: var(--panel);
-      font-family: var(--mono);
-      font-size: 0.65rem;
-      color: var(--muted);
-      text-align: center;
-      padding: 4px;
-      border-top: 1px solid var(--border);
+      background: var(--panel); font-family: var(--mono); font-size: 0.65rem;
+      color: var(--muted); text-align: center; padding: 4px; border-top: 1px solid var(--border);
     }
 
+    /* Marqueurs Drones et Pilote */
     .drone-marker { width: 16px; height: 16px; position: relative; }
     .drone-marker::before, .drone-marker::after { content: ''; position: absolute; background: #00d4ff; }
     .drone-marker::before { width: 16px; height: 2px; top: 7px; left: 0; }
@@ -185,47 +217,35 @@
     .drone-dot { position: absolute; width: 4px; height: 4px; background: #ff6b35; border-radius: 50%; top: 6px; left: 6px; }
 
     .user-marker {
-      width: 14px; height: 14px;
-      background: #4a90ff; border: 2px solid white; border-radius: 50%;
-      box-shadow: 0 0 8px rgba(74,144,255,0.8);
-      animation: userpulse 2s infinite;
+      width: 14px; height: 14px; background: #4a90ff; border: 2px solid white; border-radius: 50%;
+      box-shadow: 0 0 8px rgba(74,144,255,0.8); animation: userpulse 2s infinite;
     }
     @keyframes userpulse {
-      0%   { box-shadow: 0 0 4px rgba(74,144,255,0.8); }
-      50%  { box-shadow: 0 0 14px rgba(74,144,255,1); }
+      0% { box-shadow: 0 0 4px rgba(74,144,255,0.8); }
+      50% { box-shadow: 0 0 14px rgba(74,144,255,1); }
       100% { box-shadow: 0 0 4px rgba(74,144,255,0.8); }
     }
 
     #center-btn {
-      position: absolute;
-      bottom: 20px;
-      right: 16px;
-      z-index: 999;
-      background: var(--panel);
-      border: 1.5px solid var(--border);
-      color: var(--accent);
-      width: 40px; height: 40px;
-      border-radius: 8px;
-      font-size: 1.1rem;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      position: absolute; bottom: 20px; right: 16px; z-index: 999;
+      background: var(--panel); border: 1.5px solid var(--border); color: var(--accent);
+      width: 40px; height: 40px; border-radius: 8px; font-size: 1.1rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
     }
-    
     .map-controls-wrapper { position: relative; width: 100%; height: 0; }
   </style>
 </head>
 <body>
 
   <header>
-    <div class="logo">DL<span>X</span>R V6.2 <span>MULTI</span></div>
+    <div class="logo">DL<span>X</span>R V6.3 <span>TWR</span></div>
     <button id="ble-btn" onclick="connectBLE()">⚡ AJOUTER RX</button>
   </header>
 
   <div id="map">
+    <!-- Widget Vent Global (Top Right) -->
     <div id="wind-widget">
-      <svg class="wind-arrow" id="wind-arrow" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg class="wind-arrow" id="wind-arrow-ui" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="2" x2="12" y2="22"></line>
         <polyline points="5 9 12 2 19 9"></polyline>
       </svg>
@@ -256,7 +276,6 @@
 
     let connectedRX = []; 
     let drones = {}; 
-    
     let userMarker = null;
     let myLat = null, myLon = null;
     let autoCenter = true; 
@@ -265,83 +284,179 @@
     // -----------------------------------------
     // INITIALISATION CARTE & SATELLITE
     // -----------------------------------------
-    const map = L.map('map', { center: [47.8545, 3.4348], zoom: 17, zoomControl: false });
+    const centerLat = 47.8545;
+    const centerLon = 3.4348;
+    const map = L.map('map', { center: [centerLat, centerLon], zoom: 17, zoomControl: false });
     
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { 
-      attribution: '© Esri', 
-      maxZoom: 19 
+      attribution: '© Esri', maxZoom: 19 
     }).addTo(map);
-    
     L.control.zoom({ position: 'topleft' }).addTo(map);
     map.on('dragstart', () => { autoCenter = false; });
 
-    const droneIcon = L.divIcon({ className: '', html: '<div class="drone-marker"><div class="drone-dot"></div></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
-    const userIcon = L.divIcon({ className: '', html: '<div class="user-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
-
     // -----------------------------------------
-    // TRACÉ DES PISTES (Air Fleury Club)
+    // DESSIN DES PISTES (Polygones & Labels)
     // -----------------------------------------
-    const mainRunwayCoords = [ [47.8532, 3.4330], [47.8558, 3.4363] ];
-    const crossRunwayCoords = [ [47.8540, 3.4352], [47.8552, 3.4348] ];
-
-    const runwayStyle = { color: 'white', weight: 4, dashArray: '10 10', opacity: 0.8 };
+    // Piste Principale (05/23)
+    const mainRunwayPoly = [
+      [47.8533, 3.4332], [47.8532, 3.4334], // Seuil 05
+      [47.8557, 3.4363], [47.8558, 3.4361]  // Seuil 23
+    ];
+    L.polygon(mainRunwayPoly, { color: '#00d4ff', weight: 2, fillOpacity: 0.1, dashArray: '5 5' }).addTo(map);
     
-    L.polyline(mainRunwayCoords, runwayStyle).addTo(map).bindTooltip("Piste Principale", {direction: 'right'});
-    L.polyline(crossRunwayCoords, runwayStyle).addTo(map).bindTooltip("Piste Secondaire", {direction: 'right'});
+    // Labels Piste Principale
+    L.marker([47.85325, 3.4333], {
+      icon: L.divIcon({ className: '', html: '<div class="runway-label">05</div>', iconSize: [24, 16], iconAnchor: [12, 8] })
+    }).addTo(map);
+    
+    L.marker([47.85575, 3.4362], {
+      icon: L.divIcon({ className: '', html: '<div class="runway-label">23</div>', iconSize: [24, 16], iconAnchor: [12, 8] })
+    }).addTo(map);
+
+    // Piste Secondaire (14/32 approximatif)
+    const secRunwayPoly = [
+      [47.8549, 3.4336], [47.8550, 3.4338],
+      [47.8540, 3.4352], [47.8539, 3.4350]
+    ];
+    L.polygon(secRunwayPoly, { color: '#ffffff', weight: 1.5, fillOpacity: 0.05, dashArray: '4 6' }).addTo(map);
+    
+    L.marker([47.85495, 3.4337], {
+      icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">14</div>', iconSize: [20, 14], iconAnchor: [10, 7] })
+    }).addTo(map);
+    L.marker([47.85395, 3.4351], {
+      icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">32</div>', iconSize: [20, 14], iconAnchor: [10, 7] })
+    }).addTo(map);
 
     // -----------------------------------------
-    // MÉTÉO & COMPOSANTE TRAVERSIÈRE
+    // VECTEUR VENT SUR CARTE & MÉTÉO
     // -----------------------------------------
-    const RUNWAY_HEADING = 50; 
+    const RUNWAY_HEADING = 50; // QFU 05
+    
+    // Création du marqueur central pour afficher la dynamique du vent
+    const onMapWindIcon = L.divIcon({
+      className: '',
+      html: `
+        <div class="onmap-wind-container" id="onmap-wind-container">
+          <div class="onmap-wind-center"></div>
+          <div class="onmap-wind-arrow" id="onmap-wind-arrow"></div>
+          <div class="onmap-crosswind-bar" id="onmap-crosswind-bar"></div>
+        </div>
+      `,
+      iconSize: [40, 40], iconAnchor: [20, 20]
+    });
+    // On place l'indicateur au centre de la piste principale
+    L.marker([47.8545, 3.4347], { icon: onMapWindIcon, interactive: false }).addTo(map);
 
     async function updateWind() {
       try {
-        const res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=47.8545&longitude=3.4348&current_weather=true');
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${centerLat}&longitude=${centerLon}&current_weather=true`);
         const data = await res.json();
         
         const windSpeed = data.current_weather.windspeed;
         const windDir = data.current_weather.winddirection;
 
-        const angleRad = (windDir - RUNWAY_HEADING) * (Math.PI / 180);
+        // Calcul Traversier (Uniquement piste principale 05/23)
+        const angleDiff = windDir - RUNWAY_HEADING;
+        const angleRad = angleDiff * (Math.PI / 180);
         const crosswind = Math.abs(Math.sin(angleRad) * windSpeed);
 
+        // UI Widget (Haut Droit)
         document.getElementById('wind-speed').textContent = `Vent: ${windSpeed.toFixed(1)} km/h`;
         document.getElementById('wind-cross').textContent = `Travers: ${crosswind.toFixed(1)} km/h`;
+        document.getElementById('wind-arrow-ui').style.transform = `rotate(${windDir + 180}deg)`;
         
-        document.getElementById('wind-arrow').style.transform = `rotate(${windDir + 180}deg)`;
+        // UI Sur Carte (Flèche bleue et barre rouge)
+        const mapWindArrow = document.getElementById('onmap-wind-arrow');
+        const mapCrossBar = document.getElementById('onmap-crosswind-bar');
         
+        if (mapWindArrow && mapCrossBar) {
+          // La flèche bleue indique d'où vient le vent
+          mapWindArrow.style.transform = `rotate(${windDir + 180}deg)`;
+          
+          // La barre rouge s'oriente perpendiculairement à la piste principale
+          // Si le vent vient de la droite (angleDiff positif), la barre pousse vers la gauche
+          const crosswindDir = Math.sin(angleRad) > 0 ? (RUNWAY_HEADING - 90) : (RUNWAY_HEADING + 90);
+          const barLength = Math.max(0, crosswind * 1.5); // Échelle visuelle
+          
+          mapCrossBar.style.transform = `rotate(${crosswindDir}deg)`;
+          mapCrossBar.style.width = `${barLength}px`;
+        }
       } catch (error) {
-        console.error("Données météo indisponibles:", error);
+        console.error("Erreur météo:", error);
       }
     }
 
-    updateWind();
-    setInterval(updateWind, 600000);
+    // -----------------------------------------
+    // SOLEIL (Trajectoire et position via SunCalc)
+    // -----------------------------------------
+    let sunPathPolyline = null;
+    let sunMarker = null;
 
-    // -----------------------------------------
-    // SÉCURITÉ : Nettoyage des IDs
-    // -----------------------------------------
-    function sanitizeId(rawId) {
-      if (!rawId) return "Inconnu";
-      return String(rawId).replace(/[^a-zA-Z0-9_-]/g, '_');
+    function updateSun() {
+      const now = new Date();
+      const times = SunCalc.getTimes(now, centerLat, centerLon);
+      const sunPos = SunCalc.getPosition(now, centerLat, centerLon);
+      
+      // Conversion azimut SunCalc (0 au Sud) en standard (0 au Nord)
+      const sunAzimuth = (sunPos.azimuth * 180 / Math.PI + 180) % 360;
+      
+      // Si le soleil est couché, on masque la trajectoire
+      if (sunPos.altitude < 0) return;
+
+      // Dessin de l'arc (matin à soir)
+      const arcPoints = [];
+      const radius = 0.0015; // Rayon visuel sur la carte (~150m)
+      
+      for (let i = 0; i <= 100; i++) {
+        // Interpolation temporelle entre le lever et le coucher
+        const t = new Date(times.sunrise.getTime() + (times.sunset.getTime() - times.sunrise.getTime()) * (i / 100));
+        const pos = SunCalc.getPosition(t, centerLat, centerLon);
+        const az = (pos.azimuth * 180 / Math.PI + 180) % 360;
+        
+        // Calcul des coordonnées GPS du point sur l'arc
+        const lat = centerLat + Math.cos(az * Math.PI / 180) * radius;
+        // Ajustement longitude selon la latitude
+        const lon = centerLon + Math.sin(az * Math.PI / 180) * (radius / Math.cos(centerLat * Math.PI / 180));
+        arcPoints.push([lat, lon]);
+      }
+
+      if (sunPathPolyline) map.removeLayer(sunPathPolyline);
+      sunPathPolyline = L.polyline(arcPoints, { color: '#ffb700', weight: 2, dashArray: '4 8', opacity: 0.7 }).addTo(map);
+
+      // Position actuelle de l'icône Soleil
+      const currentLat = centerLat + Math.cos(sunAzimuth * Math.PI / 180) * radius;
+      const currentLon = centerLon + Math.sin(sunAzimuth * Math.PI / 180) * (radius / Math.cos(centerLat * Math.PI / 180));
+
+      const sunIcon = L.divIcon({ className: '', html: '<div class="sun-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+      
+      if (!sunMarker) {
+        sunMarker = L.marker([currentLat, currentLon], { icon: sunIcon, interactive: false }).addTo(map);
+      } else {
+        sunMarker.setLatLng([currentLat, currentLon]);
+      }
     }
 
+    // Initialisation Météo et Soleil
+    updateWind();
+    updateSun();
+    setInterval(updateWind, 300000); // 5 min
+    setInterval(updateSun, 300000);  // 5 min
+
     // -----------------------------------------
-    // GESTION DU PILOTE (HOME)
+    // ICONS & GESTION DRONES (Standard)
     // -----------------------------------------
+    const droneIcon = L.divIcon({ className: '', html: '<div class="drone-marker"><div class="drone-dot"></div></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
+    const userIcon = L.divIcon({ className: '', html: '<div class="user-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+
+    function sanitizeId(rawId) { return String(rawId || "Inconnu").replace(/[^a-zA-Z0-9_-]/g, '_'); }
+
     function startGeolocation() {
       if (!navigator.geolocation) return;
       navigator.geolocation.watchPosition(pos => {
-        myLat = pos.coords.latitude;
-        myLon = pos.coords.longitude;
-        
+        myLat = pos.coords.latitude; myLon = pos.coords.longitude;
         if (!userMarker) {
           userMarker = L.marker([myLat, myLon], { icon: userIcon }).bindTooltip('📍 Moi', { direction: 'top' }).addTo(map);
-          map.setView([myLat, myLon], 17); 
-        } else {
-          userMarker.setLatLng([myLat, myLon]);
-        }
-        
+        } else { userMarker.setLatLng([myLat, myLon]); }
         updateGlobalStatus();
         Object.keys(drones).forEach(id => updateLinkLine(id));
       }, () => {}, { enableHighAccuracy: true, maximumAge: 2000 });
@@ -353,29 +468,19 @@
       document.getElementById('global-status').textContent = `PILOTE | ${gpsTxt} | RX CONNECTÉS: ${rxCount}`;
     }
 
-    // -----------------------------------------
-    // GESTION MULTI-DRONES
-    // -----------------------------------------
     function createNewDrone(id) {
       const container = document.getElementById('drones-container');
       if (Object.keys(drones).length === 0) container.innerHTML = '';
 
-      drones[id] = {
-        rxCount: 0,
-        lastLat: null,
-        lastLon: null,
-        marker: null,
-        polyline: null,
-        linkLine: null,
-        tracePath: [],
-        color: getRandomColor(),
-        lastSeen: Date.now()
-      };
+      const colors = ['#00d4ff', '#ff6b35', '#00ff9d', '#ffd700', '#ff3b5c', '#b19cd9'];
+      const color = colors[Object.keys(drones).length % colors.length];
+
+      drones[id] = { rxCount: 0, lastLat: null, lastLon: null, marker: null, polyline: null, linkLine: null, tracePath: [], color: color, lastSeen: Date.now() };
 
       const html = `
         <div class="drone-panel" id="panel-${id}">
           <div class="info-row title-row">
-            <span class="info-label accent" style="color:${drones[id].color}">✈️ ID: ${id}</span>
+            <span class="info-label accent" style="color:${color}">✈️ ID: ${id}</span>
             <span id="badge-${id}" class="state-badge">INIT</span>
           </div>
           <div class="info-row">
@@ -393,22 +498,12 @@
       container.insertAdjacentHTML('beforeend', html);
     }
 
-    function getRandomColor() {
-      const colors = ['#00d4ff', '#ff6b35', '#00ff9d', '#ffd700', '#ff3b5c', '#b19cd9'];
-      const index = Object.keys(drones).length % colors.length;
-      return colors[index];
-    }
-
     function updateLinkLine(id) {
       const dr = drones[id];
       if (myLat === null || dr.lastLat === null) return;
-      
       const pts = [[myLat, myLon], [dr.lastLat, dr.lastLon]];
-      if (dr.linkLine) {
-        dr.linkLine.setLatLngs(pts);
-      } else {
-        dr.linkLine = L.polyline(pts, { color: '#ffd700', weight: 1, opacity: 0.4, dashArray: '4 8' }).addTo(map);
-      }
+      if (dr.linkLine) dr.linkLine.setLatLngs(pts);
+      else dr.linkLine = L.polyline(pts, { color: '#ffd700', weight: 1, opacity: 0.4, dashArray: '4 8' }).addTo(map);
     }
 
     function updateMap(id, lat, lon) {
@@ -416,89 +511,49 @@
       const latlng = [lat, lon];
       
       if (!dr.marker) {
-        dr.marker = L.marker(latlng, { icon: droneIcon })
-          .bindTooltip(`🎯 ${id}`, { permanent: true, direction: 'right', className: 'drone-label' })
-          .addTo(map);
-      } else {
-        dr.marker.setLatLng(latlng);
-      }
+        dr.marker = L.marker(latlng, { icon: droneIcon }).bindTooltip(`🎯 ${id}`, { permanent: true, direction: 'right' }).addTo(map);
+      } else { dr.marker.setLatLng(latlng); }
       
       dr.tracePath.push(latlng);
-      if (dr.polyline) {
-        dr.polyline.setLatLngs(dr.tracePath);
-      } else {
-        dr.polyline = L.polyline(dr.tracePath, { color: dr.color, weight: 2, opacity: 0.7 }).addTo(map);
-      }
+      if (dr.polyline) dr.polyline.setLatLngs(dr.tracePath);
+      else dr.polyline = L.polyline(dr.tracePath, { color: dr.color, weight: 2, opacity: 0.7 }).addTo(map);
       
       requestCenterMap();
       updateLinkLine(id);
     }
 
-    // -----------------------------------------
-    // ANTI-JITTERING DU CENTRAGE
-    // -----------------------------------------
     function requestCenterMap() {
       if (!autoCenter) return;
       if (!centerThrottleTimeout) {
         centerThrottleTimeout = setTimeout(() => {
-          executeCenterMap();
+          let bounds = [];
+          if (myLat !== null) bounds.push([myLat, myLon]);
+          Object.keys(drones).forEach(id => { if (drones[id].lastLat !== null) bounds.push([drones[id].lastLat, drones[id].lastLon]); });
+          if (bounds.length > 0) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
           centerThrottleTimeout = null;
         }, 1000);
       }
     }
+    function forceCenterMap() { autoCenter = true; requestCenterMap(); }
 
-    function forceCenterMap() {
-      autoCenter = true;
-      executeCenterMap();
-    }
-
-    function executeCenterMap() {
-      let bounds = [];
-      if (myLat !== null) bounds.push([myLat, myLon]);
-      
-      Object.keys(drones).forEach(id => {
-        if (drones[id].lastLat !== null) {
-          bounds.push([drones[id].lastLat, drones[id].lastLon]);
-        }
-      });
-
-      if (bounds.length > 0) {
-        map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
-      }
-    }
-
-    // -----------------------------------------
-    // WATCHDOG : DÉCONNEXIONS
-    // -----------------------------------------
     setInterval(() => {
       const now = Date.now();
       Object.keys(drones).forEach(id => {
-        const dr = drones[id];
-        if (now - dr.lastSeen > 4000) {
+        if (now - drones[id].lastSeen > 4000) {
           const badge = document.getElementById(`badge-${id}`);
-          if (badge && badge.textContent !== 'OFFLINE') {
-            badge.textContent = 'OFFLINE';
-            badge.className = 'state-badge OFFLINE';
-          }
+          if (badge && badge.textContent !== 'OFFLINE') { badge.textContent = 'OFFLINE'; badge.className = 'state-badge OFFLINE'; }
         }
       });
     }, 2000);
 
-    // -----------------------------------------
-    // TRAITEMENT DES DONNÉES ENTRANTES
-    // -----------------------------------------
     function handleData(json) {
       try {
         const d = JSON.parse(json);
         const id = sanitizeId(d.drone_id || d.id);
-
-        if (!drones[id]) {
-          createNewDrone(id);
-        }
+        if (!drones[id]) createNewDrone(id);
 
         const dr = drones[id];
-        dr.rxCount++;
-        dr.lastSeen = Date.now();
+        dr.rxCount++; dr.lastSeen = Date.now();
         
         const etat = (d.etat || '--').toUpperCase();
         const alt  = Math.max(0, parseFloat(d.alt  || 0)).toFixed(0);
@@ -508,64 +563,38 @@
         const lon  = parseFloat(d.lon  || 0);
 
         const badge = document.getElementById(`badge-${id}`);
-        badge.textContent = etat;
-        badge.className   = 'state-badge ' + etat;
-
+        badge.textContent = etat; badge.className = 'state-badge ' + etat;
         document.getElementById(`rssi-${id}`).textContent = `RSSI:${rssi}`;
         document.getElementById(`alt-${id}`).textContent  = `Alt:${alt}m`;
         document.getElementById(`dist-${id}`).textContent = dist < 1000 ? `${dist.toFixed(0)}m` : `${(dist / 1000).toFixed(2)}km`;
         document.getElementById(`tr-${id}`).textContent   = `Tr:${dr.rxCount}`;
 
         if (lat !== 0 && lon !== 0) {
-          dr.lastLat = lat;
-          dr.lastLon = lon;
+          dr.lastLat = lat; dr.lastLon = lon;
           document.getElementById(`pos-${id}`).textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
           updateMap(id, lat, lon);
         }
-
-      } catch(e) {
-        console.error("Erreur Parsing JSON:", e);
-      }
+      } catch(e) {}
     }
 
-    // -----------------------------------------
-    // BLUETOOTH (MULTI-CONNEXIONS)
-    // -----------------------------------------
     async function connectBLE() {
-      if (!navigator.bluetooth) {
-        alert('Web Bluetooth non supporté !'); return;
-      }
+      if (!navigator.bluetooth) return alert('Web Bluetooth non supporté !');
       try {
-        const device = await navigator.bluetooth.requestDevice({
-          filters: [{ namePrefix: 'DLXR_RX' }], 
-          optionalServices: [SERVICE_UUID]
-        });
-        
+        const device = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'DLXR_RX' }], optionalServices: [SERVICE_UUID] });
         device.addEventListener('gattserverdisconnected', () => {
-          connectedRX = connectedRX.filter(d => d.id !== device.id);
-          updateGlobalStatus();
+          connectedRX = connectedRX.filter(d => d.id !== device.id); updateGlobalStatus();
         });
-
         const server  = await device.gatt.connect();
         const service = await server.getPrimaryService(SERVICE_UUID);
         const charact = await service.getCharacteristic(CHARACT_UUID);
-        
         await charact.startNotifications();
-        charact.addEventListener('characteristicvaluechanged', e => {
-          handleData(new TextDecoder().decode(e.target.value));
-        });
-
+        charact.addEventListener('characteristicvaluechanged', e => handleData(new TextDecoder().decode(e.target.value)));
         connectedRX.push(device);
         
         const btn = document.getElementById('ble-btn');
-        btn.textContent = `+ AJOUTER RX (${connectedRX.length})`;
-        btn.classList.add('connected');
-        
+        btn.textContent = `+ AJOUTER RX (${connectedRX.length})`; btn.classList.add('connected');
         updateGlobalStatus();
-        
-      } catch(e) {
-        console.error('Erreur BLE:', e);
-      }
+      } catch(e) { console.error('Erreur BLE:', e); }
     }
 
     startGeolocation();
