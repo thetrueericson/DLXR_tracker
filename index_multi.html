@@ -58,7 +58,7 @@
     .wind-data { display: flex; flex-direction: column; gap: 2px; }
     .wind-text { font-family: var(--mono); font-size: 0.7rem; color: #fff; }
     /* La couleur des textes d'alerte suit l'indice global */
-    .warning { color: var(--weather-color); font-weight: bold; text-shadow: 0 0 4px rgba(0,0,0,0.8); }
+.warning { color: #fff; font-weight: bold; text-shadow: 0 0 8px var(--weather-color); }
 
     /* ========================================== */
     /* CONTRÔLES MÉTÉO (Curseurs Temps Go/No-Go)  */
@@ -70,7 +70,7 @@
     }
     .slider-row { display: flex; flex-direction: column; gap: 6px; }
     .slider-row label { font-size: 0.75rem; font-weight: 600; display: flex; justify-content: space-between; }
-    .slider-row span { font-family: var(--mono); color: var(--weather-color); transition: color 0.3s; text-shadow: 0 0 2px rgba(0,0,0,0.5); }
+    .slider-row span { font-family: var(--mono); color: #fff; text-shadow: 0 0 8px var(--weather-color); transition: text-shadow 0.3s; }
     
     /* Curseurs : La barre (track) reçoit le dégradé via le JS, le bouton (thumb) prend la couleur actuelle */
     input[type=range] { 
