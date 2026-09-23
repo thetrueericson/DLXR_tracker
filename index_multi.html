@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>DLXR Tracker V6.11 - CORRECTION MÉTÉO & PISTES</title>
+  <title>DLXR Tracker V6.9 - MÉTÉO GO/NO-GO</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet" />
@@ -24,7 +24,10 @@
       --red:       #ff3b5c;
       --text:      #e0eeff;
       --muted:     #4a6080;
-      --weather-color: #00ff9d; /* Variable dynamique modifiée par JS selon les rafales */
+      
+      /* Variable dynamique modifiée par JS selon l'indice de vol à l'instant T */
+      --weather-color: #00ff9d; 
+      
       --mono:      'Share Tech Mono', monospace;
       --sans:      'Exo 2', sans-serif;
     }
@@ -54,7 +57,7 @@
     .wind-arrow { width: 22px; height: 22px; transition: transform 0.5s ease; }
     .wind-data { display: flex; flex-direction: column; gap: 2px; }
     .wind-text { font-family: var(--mono); font-size: 0.7rem; color: #fff; }
-    .crosswind { color: var(--red); font-weight: bold; }
+    /* La couleur des textes d'alerte suit l'indice global */
     .warning { color: var(--weather-color); font-weight: bold; text-shadow: 0 0 4px rgba(0,0,0,0.8); }
 
     /* ========================================== */
@@ -69,8 +72,10 @@
     .slider-row label { font-size: 0.75rem; font-weight: 600; display: flex; justify-content: space-between; }
     .slider-row span { font-family: var(--mono); color: var(--weather-color); transition: color 0.3s; text-shadow: 0 0 2px rgba(0,0,0,0.5); }
     
+    /* Curseurs : La barre (track) reçoit le dégradé via le JS, le bouton (thumb) prend la couleur actuelle */
     input[type=range] { 
       -webkit-appearance: none; width: 100%; height: 8px; border-radius: 4px; outline: none; 
+      /* Le background sera injecté par JS (linear-gradient) */
       box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
     }
     input[type=range]::-webkit-slider-thumb { 
@@ -86,7 +91,8 @@
     .runway-label { background: rgba(30, 45, 74, 0.85); color: white; border: 1px solid #4a90ff; border-radius: 4px; padding: 2px 6px; font-family: var(--mono); font-size: 0.7rem; font-weight: bold; text-align: center; }
     .runway-label.secondary { background: rgba(42, 42, 42, 0.85); border-color: #666; color: #ccc; }
     .sun-marker { width: 14px; height: 14px; background: #ffb700; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 10px #ffb700; }
-    
+    .onmap-wind-container { position: absolute; width: 160px; height: 160px; transform: translate(-50%, -50%); pointer-events: none; }
+
     /* PANNEAUX DRONES ET BOUTONS */
     #drones-container { background: var(--bg); border-top: 1px solid var(--border); max-height: 35vh; overflow-y: auto; z-index: 1000; display: flex; flex-direction: column; gap: 5px; padding: 5px; }
     .drone-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; }
@@ -114,7 +120,7 @@
 <body>
 
   <header>
-    <div class="logo">DL<span>X</span>R V6.11 <span>METEO</span></div>
+    <div class="logo">DL<span>X</span>R V6.9 <span>METEO</span></div>
     <button id="ble-btn" onclick="connectBLE()">⚡ AJOUTER RX</button>
   </header>
 
@@ -159,12 +165,12 @@
     // 1. BLOC DE CONFIGURATION CENTRALISÉ
     // ==========================================
     const CONFIG = {
-      origin: { lat: 47.854408, lon: 3.434616 }, // Point jaune d'origine du vecteur vent
+      origin: { lat: 47.854408, lon: 3.434616 }, 
       
       runway1: { 
-        lat1: 47.852400, lon1: 3.432500, // Restauration des coordonnées parfaitement alignées
-        lat2: 47.854830, lon2: 3.435550, 
-        width: 16,                       
+        lat1: 47.853890, lon1: 3.434071, 
+        lat2: 47.854850, lon2: 3.435555, 
+        width: 25,                       
         heading: 51                      
       },
       
@@ -182,13 +188,14 @@
       windScale: 1.5 
     };
 
+    // Code couleur Go/No-Go
     const COLORS = {
-      NIGHT: '#1a237e',  
-      RAIN: '#00d4ff',   
-      FOG: '#ffffff',    
-      ALERT: '#ff3b5c',  
-      MODERATE: '#ffd700',
-      OK: '#00ff9d'      
+      NIGHT: '#1a237e',  // Bleu marine sombre
+      RAIN: '#00d4ff',   // Bleu ciel / Cyan
+      FOG: '#ffffff',    // Blanc
+      ALERT: '#ff3b5c',  // Rouge
+      MODERATE: '#ffd700',// Jaune
+      OK: '#00ff9d'      // Vert
     };
 
     // ==========================================
@@ -256,7 +263,13 @@
     // ==========================================
     // 4. MOTEUR D'INDICE DE VOL & COULEURS
     // ==========================================
+    
+    /**
+     * Calcule la couleur (l'indice) selon l'heure, le soleil, et la météo.
+     * Hiérarchie : Nuit > Pluie > Brouillard > Vent Fort > Vent Moyen > Parfait
+     */
     function getFlightColor(targetDate, gusts, precip, wmoCode) {
+      // Calcul du soleil pour la nuit aéronautique (Crépuscule civil : < -6°)
       const sunPos = SunCalc.getPosition(targetDate, CONFIG.origin.lat, CONFIG.origin.lon);
       const altDegrees = sunPos.altitude * 180 / Math.PI;
       
@@ -278,8 +291,8 @@
 
     async function loadWeatherData() {
       try {
-        // CORRECTION DE L'ERREUR 400 DE L'API : Le paramètre exact est "weather_code"
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.origin.lat}&longitude=${CONFIG.origin.lon}&hourly=windspeed_10m,winddirection_10m,windgusts_10m,precipitation,weather_code&past_days=7&forecast_days=7&timezone=auto`;
+        // Ajout du weathercode pour détecter le brouillard (WMO codes 45/48)
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.origin.lat}&longitude=${CONFIG.origin.lon}&hourly=windspeed_10m,winddirection_10m,windgusts_10m,precipitation,weathercode&past_days=7&forecast_days=7&timezone=auto`;
         const res = await fetch(url);
         const data = await res.json();
         weatherData = data.hourly;
@@ -297,14 +310,17 @@
         totalDaysLoaded = Math.floor(weatherData.time.length / 24);
         sliderDate.max = totalDaysLoaded - 1;
         
+        // Initialise sur le jour et l'heure actuels
         sliderDate.value = Math.floor(closestIndex / 24);
         sliderTime.value = closestIndex % 24;
 
+        // Génère le dégradé fixe du curseur des jours (moyennes)
         updateDateSliderGradient();
+
         applyWeatherData();
 
         sliderDate.addEventListener('input', () => {
-          updateTimeSliderGradient(); 
+          updateTimeSliderGradient(); // Met à jour le dégradé du jour sélectionné
           applyWeatherData();
         });
         sliderTime.addEventListener('input', applyWeatherData);
@@ -314,6 +330,9 @@
       }
     }
 
+    /**
+     * Dessine le dégradé du curseur "Heure" avec les 24 couleurs de la journée sélectionnée
+     */
     function updateTimeSliderGradient() {
       const dayIdx = parseInt(sliderDate.value);
       const stops = [];
@@ -325,7 +344,7 @@
           targetDate, 
           weatherData.windgusts_10m[dataIndex], 
           weatherData.precipitation[dataIndex], 
-          weatherData.weather_code[dataIndex]
+          weatherData.weathercode[dataIndex]
         );
         const percent = (h / 23) * 100;
         stops.push(`${color} ${percent}%`);
@@ -334,35 +353,40 @@
       sliderTime.style.background = `linear-gradient(to right, ${stops.join(', ')})`;
     }
 
+    /**
+     * Dessine le dégradé du curseur "Date" basé sur la MOYENNE des heures de JOUR de chaque jour.
+     */
     function updateDateSliderGradient() {
       const stops = [];
       
       for (let d = 0; d < totalDaysLoaded; d++) {
         let sumGusts = 0, sumPrecip = 0, dayHours = 0, fogHours = 0;
         
+        // On analyse les 24h du jour
         for (let h = 0; h < 24; h++) {
           const dataIndex = (d * 24) + h;
           const targetDate = new Date(weatherData.time[dataIndex]);
           const sunPos = SunCalc.getPosition(targetDate, CONFIG.origin.lat, CONFIG.origin.lon);
           const altDegrees = sunPos.altitude * 180 / Math.PI;
           
+          // On ne fait la moyenne QUE sur les heures de jour (Soleil > -6°)
           if (altDegrees >= -6) {
             sumGusts += weatherData.windgusts_10m[dataIndex] || 0;
             sumPrecip += weatherData.precipitation[dataIndex] || 0;
-            const wmo = weatherData.weather_code[dataIndex];
+            const wmo = weatherData.weathercode[dataIndex];
             if (wmo === 45 || wmo === 48) fogHours++;
             dayHours++;
           }
         }
         
-        let dailyColor = COLORS.NIGHT;
+        let dailyColor = COLORS.NIGHT; // Fallback si jour polaire (impossible ici)
         
         if (dayHours > 0) {
           const avgGusts = sumGusts / dayHours;
           const avgPrecip = sumPrecip / dayHours;
           
           if (avgPrecip > 0.1) dailyColor = COLORS.RAIN;
-          else if (fogHours > (dayHours / 3)) dailyColor = COLORS.FOG; 
+          else if (fogHours > (dayHours / 3)) dailyColor = COLORS.FOG; // Si + de 1/3 de la journée est dans le brouillard
           else if (avgGusts >= CONFIG.weatherThresholds.warning) dailyColor = COLORS.ALERT;
           else if (avgGusts > CONFIG.weatherThresholds.safe) dailyColor = COLORS.MODERATE;
           else dailyColor = COLORS.OK;
@@ -373,9 +397,12 @@
       }
       
       sliderDate.style.background = `linear-gradient(to right, ${stops.join(', ')})`;
-      updateTimeSliderGradient(); 
+      updateTimeSliderGradient(); // Met à jour le slider horaire pour le premier affichage
     }
 
+    /**
+     * Extrait les données de l'heure exacte pointée par les curseurs et met à jour l'UI/Carte
+     */
     function applyWeatherData() {
       if (!weatherData) return;
 
@@ -388,14 +415,18 @@
       const windDir = weatherData.winddirection_10m[dataIndex] || 0;
       const windGusts = weatherData.windgusts_10m[dataIndex] || 0;
       const precip = weatherData.precipitation[dataIndex] || 0;
-      const wmo = weatherData.weather_code[dataIndex] || 0;
+      const wmo = weatherData.weathercode[dataIndex] || 0;
 
       document.getElementById('label-date').textContent = targetDate.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' });
       document.getElementById('label-time').textContent = targetDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
+      // Calcule la couleur de l'instant T
       const alertColor = getFlightColor(targetDate, windGusts, precip, wmo);
+      
+      // Injecte la couleur dans CSS pour colorer la bordure, les pouces des curseurs, et le texte "Rafales"
       document.documentElement.style.setProperty('--weather-color', alertColor);
 
+      // Calcul de la composante traversière (Axe piste principale 05)
       const angleRad = (windDir - CONFIG.runway1.heading) * (Math.PI / 180);
       const crosswind = Math.sin(angleRad) * windSpeed;
       const absCrosswind = Math.abs(crosswind);
@@ -403,6 +434,7 @@
       document.getElementById('ui-wind').textContent = `Vent: ${windSpeed.toFixed(1)} km/h`;
       document.getElementById('ui-gusts').textContent = `Rafales: ${windGusts.toFixed(1)} km/h`;
       
+      // Textes conditionnels pour Brouillard/Pluie
       if (wmo === 45 || wmo === 48) {
         document.getElementById('ui-precip').textContent = `MÉTÉO: BROUILLARD`;
       } else {
@@ -414,15 +446,16 @@
 
       // --- DESSIN DES VECTEURS GPS SUR LA CARTE ---
       windVectorLayer.clearLayers();
-      const windDestinationBearing = windDir + 180; 
+      const windDestinationBearing = windDir + 180; // Direction où souffle le vent
 
       if (windSpeed > 0) {
+        // La couleur de la flèche vent prend la couleur de l'alerte pour une lecture visuelle immédiate sur la carte
         const windDestCoords = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, windSpeed * CONFIG.windScale, windDestinationBearing);
         L.polyline([[CONFIG.origin.lat, CONFIG.origin.lon], windDestCoords], {color: alertColor, weight: 4}).addTo(windVectorLayer);
         
-        const barbLength = 4;
-        const barb1 = computeDestinationPoint(windDestCoords[0], windDestCoords[1], barbLength, windDestinationBearing + 160); 
-        const barb2 = computeDestinationPoint(windDestCoords[0], windDestCoords[1], barbLength, windDestinationBearing - 160);
+        // Pointe flèche
+        const barb1 = computeDestinationPoint(windDestCoords[0], windDestCoords[1], 10, windDestinationBearing + 150);
+        const barb2 = computeDestinationPoint(windDestCoords[0], windDestCoords[1], 10, windDestinationBearing - 150);
         L.polygon([windDestCoords, barb1, barb2], {color: alertColor, fillColor: alertColor, fillOpacity: 1, weight: 1}).addTo(windVectorLayer);
       }
 
@@ -432,8 +465,10 @@
         L.polyline([[CONFIG.origin.lat, CONFIG.origin.lon], crossDestCoords], {color: '#ff3b5c', weight: 6, lineCap: 'round'}).addTo(windVectorLayer);
       }
 
+      // Origine centrale
       L.circleMarker([CONFIG.origin.lat, CONFIG.origin.lon], {radius: 5, color: 'white', weight: 1.5, fillColor: alertColor, fillOpacity: 1}).addTo(windVectorLayer);
 
+      // Met à jour la position du soleil
       updateSunPosition(targetDate);
     }
 
@@ -456,7 +491,7 @@
       if (sunPathPolyline) map.removeLayer(sunPathPolyline);
       sunPathPolyline = L.polyline(arcPoints, { color: '#ffb700', weight: 2, dashArray: '4 8', opacity: 0.7 }).addTo(map);
 
-      if (sunPos.altitude > -0.1) { 
+      if (sunPos.altitude > -0.1) { // Laisse le soleil visible jusqu'à la nuit complète
         const currentLat = CONFIG.origin.lat + Math.cos(sunAzimuth * Math.PI / 180) * radius;
         const currentLon = CONFIG.origin.lon + Math.sin(sunAzimuth * Math.PI / 180) * (radius / Math.cos(CONFIG.origin.lat * Math.PI / 180));
         const sunIcon = L.divIcon({ className: '', html: '<div class="sun-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
@@ -468,8 +503,10 @@
       }
     }
 
+    loadWeatherData();
+
     // ==========================================
-    // 7. GESTION DES DRONES ET DU PILOTE
+    // 6. GESTION DES DRONES ET DU PILOTE
     // ==========================================
     const droneIcon = L.divIcon({ className: '', html: '<div class="drone-marker"><div class="drone-dot"></div></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
     const userIcon = L.divIcon({ className: '', html: '<div class="user-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
