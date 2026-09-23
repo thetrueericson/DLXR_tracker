@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>DLXR Tracker V6.5 - MULTI SATELLITE & TWR</title>
+  <title>DLXR Tracker V6.6 - MULTI SATELLITE & TWR</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet" />
@@ -97,7 +97,7 @@
 <body>
 
   <header>
-    <div class="logo">DL<span>X</span>R V6.5 <span>TWR</span></div>
+    <div class="logo">DL<span>X</span>R V6.6 <span>TWR</span></div>
     <button id="ble-btn" onclick="connectBLE()">⚡ AJOUTER RX</button>
   </header>
 
@@ -137,81 +137,105 @@
     let autoCenter = true, centerThrottleTimeout = null;
 
     // -----------------------------------------
+    // FONCTION MATHÉMATIQUE : POLYS PARFAITS
+    // -----------------------------------------
+    // Génère un polygone rectangulaire parfait à partir de l'axe central et de la largeur
+    function getRunwayPoly(lat1, lon1, lat2, lon2, widthMeters) {
+      const R = 6378137; // Rayon Terre
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180 * Math.cos((lat1 + lat2) / 2 * Math.PI / 180);
+      const heading = Math.atan2(dLon, dLat); // Orientation de la piste
+      
+      const w = widthMeters / 2;
+      // Décalage perpendiculaire (Gauche/Droite)
+      const dx = (w * Math.cos(heading)) / (R * Math.cos((lat1 + lat2) / 2 * Math.PI / 180)) * 180 / Math.PI;
+      const dy = (w * -Math.sin(heading)) / R * 180 / Math.PI;
+
+      return [
+        [lat1 + dy, lon1 + dx], // Seuil 1 - Droite
+        [lat1 - dy, lon1 - dx], // Seuil 1 - Gauche
+        [lat2 - dy, lon2 - dx], // Seuil 2 - Gauche
+        [lat2 + dy, lon2 + dx]  // Seuil 2 - Droite
+      ];
+    }
+
+    // -----------------------------------------
     // INITIALISATION CARTE
     // -----------------------------------------
-    const centerLat = 47.85465; // Recadré sur le point jaune du club house
-    const centerLon = 3.43430;
-    const map = L.map('map', { center: [centerLat, centerLon], zoom: 18, zoomControl: false });
+    // Centre Météo / Vent (Ton point précis)
+    const windOriginLat = 47.854408;
+    const windOriginLon = 3.434616;
+    
+    const map = L.map('map', { center: [windOriginLat, windOriginLon], zoom: 18, zoomControl: false });
     
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri', maxZoom: 20 }).addTo(map);
     L.control.zoom({ position: 'topleft' }).addTo(map);
     map.on('dragstart', () => { autoCenter = false; });
 
     // -----------------------------------------
-    // DESSIN DES PISTES RÉALISTES
+    // DESSIN DES PISTES (Bord blanc, Fond Noir 75%, Pointillés)
     // -----------------------------------------
+    
     // --- PISTE PRINCIPALE (05/23) ---
-    // Coordonnées resserrées pour épouser exactement la zone tondue
-    const mainRunwayCorners = [
-      [47.85385, 3.43390], [47.85375, 3.43405], // Seuil 05
-      [47.85515, 3.43575], [47.85525, 3.43560]  // Seuil 23
-    ];
-    const mainRunwayCenter = [ [47.85380, 3.43398], [47.85520, 3.43568] ];
+    // Axe central ajusté pour que le coin NE tombe sur 47.854746, 3.435714 avec ~16m de large
+    const mainLat1 = 47.852400, mainLon1 = 3.432500; // Seuil 05
+    const mainLat2 = 47.854830, mainLon2 = 3.435550; // Seuil 23
+    
+    const mainRunwayCorners = getRunwayPoly(mainLat1, mainLon1, mainLat2, mainLon2, 16);
+    const mainRunwayCenter = [ [mainLat1, mainLon1], [mainLat2, mainLon2] ];
     
     L.polygon(mainRunwayCorners, { color: '#ffffff', weight: 1.5, fillColor: '#000000', fillOpacity: 0.75 }).addTo(map);
     L.polyline(mainRunwayCenter, { color: '#ffffff', weight: 2, dashArray: '6 8', opacity: 0.8 }).addTo(map);
     
-    L.marker([47.85375, 3.43385], { icon: L.divIcon({ className: '', html: '<div class="runway-label">05</div>', iconSize: [24, 16], iconAnchor: [12, 8] }) }).addTo(map);
-    L.marker([47.85530, 3.43580], { icon: L.divIcon({ className: '', html: '<div class="runway-label">23</div>', iconSize: [24, 16], iconAnchor: [12, 8] }) }).addTo(map);
+    L.marker([mainLat1, mainLon1], { icon: L.divIcon({ className: '', html: '<div class="runway-label">05</div>', iconSize: [24, 16], iconAnchor: [12, 8] }) }).addTo(map);
+    L.marker([mainLat2, mainLon2], { icon: L.divIcon({ className: '', html: '<div class="runway-label">23</div>', iconSize: [24, 16], iconAnchor: [12, 8] }) }).addTo(map);
 
     // --- PISTE SECONDAIRE (14/32) ---
-    const secRunwayCorners = [
-      [47.85485, 3.43440], [47.85475, 3.43425], // Seuil 14
-      [47.85435, 3.43495], [47.85445, 3.43510]  // Seuil 32
-    ];
-    const secRunwayCenter = [ [47.85480, 3.43433], [47.85440, 3.43503] ];
+    // Coordonnées exactes fournies par l'utilisateur
+    const secLat1 = 47.854841, secLon1 = 3.434967; // Seuil 14
+    const secLat2 = 47.854277, secLon2 = 3.434944; // Seuil 32 (Conversion de 47°51'15.4"N 3°26'05.8"E)
+    
+    const secRunwayCorners = getRunwayPoly(secLat1, secLon1, secLat2, secLon2, 11.8);
+    const secRunwayCenter = [ [secLat1, secLon1], [secLat2, secLon2] ];
 
     L.polygon(secRunwayCorners, { color: '#ffffff', weight: 1.5, fillColor: '#000000', fillOpacity: 0.75 }).addTo(map);
     L.polyline(secRunwayCenter, { color: '#ffffff', weight: 2, dashArray: '6 8', opacity: 0.8 }).addTo(map);
     
-    L.marker([47.85485, 3.43415], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">14</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
-    L.marker([47.85435, 3.43515], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">32</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
+    L.marker([secLat1, secLon1], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">14</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
+    L.marker([secLat2, secLon2], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">32</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
 
     // -----------------------------------------
-    // VECTEUR VENT SVG (Point Jaune du Club House)
+    // VECTEUR VENT SVG (Origine sur point fourni)
     // -----------------------------------------
-    const RUNWAY_HEADING = 50; // QFU 05
-    // Coordonnées exactes du point jaune "Air Fleury Club"
-    const clubhouseLat = 47.85470;
-    const clubhouseLon = 3.43400;
+    const RUNWAY_HEADING = 51; // QFU affiné 05
     
     const onMapWindIcon = L.divIcon({
       className: '',
       html: `
         <div class="onmap-wind-container">
           <svg viewBox="-60 -60 120 120" style="width: 120px; height: 120px; overflow: visible;">
-            <!-- Composante Traversière (Rouge) partant du centre -->
+            <!-- Composante Traversière (Rouge) -->
             <g id="svg-crosswind-group" style="transition: transform 0.5s ease;">
-              <line id="svg-crosswind-line" x1="0" y1="0" x2="0" y2="0" stroke="#ff3b5c" stroke-width="3" stroke-linecap="round" />
+              <line id="svg-crosswind-line" x1="0" y1="0" x2="0" y2="0" stroke="#ff3b5c" stroke-width="4" stroke-linecap="round" />
             </g>
-            <!-- Vecteur Vent Global (Bleu) partant du centre -->
+            <!-- Vecteur Vent Global (Bleu) -->
             <g id="svg-wind-group" style="transition: transform 0.5s ease;">
-              <line x1="0" y1="0" x2="0" y2="-45" stroke="#00d4ff" stroke-width="2.5" stroke-linecap="round" />
-              <polygon points="-5,-38 5,-38 0,-48" fill="#00d4ff" />
+              <line x1="0" y1="0" x2="0" y2="-45" stroke="#00d4ff" stroke-width="3" stroke-linecap="round" />
+              <polygon points="-6,-35 6,-35 0,-48" fill="#00d4ff" />
             </g>
-            <!-- Point Jaune central (Club House) -->
-            <circle cx="0" cy="0" r="4" fill="#ffd700" stroke="white" stroke-width="1.5" />
+            <!-- Point d'origine -->
+            <circle cx="0" cy="0" r="4.5" fill="#ffd700" stroke="white" stroke-width="1.5" />
           </svg>
         </div>
       `,
       iconSize: [120, 120], iconAnchor: [60, 60]
     });
     
-    L.marker([clubhouseLat, clubhouseLon], { icon: onMapWindIcon, interactive: false }).addTo(map);
+    L.marker([windOriginLat, windOriginLon], { icon: onMapWindIcon, interactive: false }).addTo(map);
 
     async function updateWind() {
       try {
-        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${centerLat}&longitude=${centerLon}&current_weather=true`);
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${windOriginLat}&longitude=${windOriginLon}&current_weather=true`);
         const data = await res.json();
         const windSpeed = data.current_weather.windspeed;
         const windDir = data.current_weather.winddirection;
@@ -228,16 +252,15 @@
         const svgCrossLine = document.getElementById('svg-crosswind-line');
         
         if (svgWindGroup && svgCrossGroup) {
-          // Orientation de la flèche bleue vers la direction où le vent souffle
           svgWindGroup.style.transform = `rotate(${windDir + 180}deg)`;
           
-          // La barre rouge est fixée perpendiculairement à la piste principale
+          // Orientation du traversier
           const crossDir = Math.sin(angleRad) > 0 ? (RUNWAY_HEADING - 90) : (RUNWAY_HEADING + 90);
           svgCrossGroup.style.transform = `rotate(${crossDir}deg)`;
           
-          // Dessin dynamique de la longueur de la barre depuis le centre (x1=0, y1=0)
+          // Tracer la ligne rouge vers l'avant du groupe tourné (axe Y négatif)
           const barLength = Math.max(0, crosswind * 1.5); 
-          svgCrossLine.setAttribute('x2', barLength);
+          svgCrossLine.setAttribute('y2', -barLength);
         }
       } catch (error) { console.error("Erreur météo:", error); }
     }
@@ -249,29 +272,29 @@
 
     function updateSun() {
       const now = new Date();
-      const times = SunCalc.getTimes(now, centerLat, centerLon);
-      const sunPos = SunCalc.getPosition(now, centerLat, centerLon);
+      const times = SunCalc.getTimes(now, windOriginLat, windOriginLon);
+      const sunPos = SunCalc.getPosition(now, windOriginLat, windOriginLon);
       const sunAzimuth = (sunPos.azimuth * 180 / Math.PI + 180) % 360;
       
       if (sunPos.altitude < 0) return;
 
       const arcPoints = [];
-      const radius = 0.0012; // Rayon resserré pour s'adapter à la nouvelle échelle visuelle
+      const radius = 0.0018; 
       
       for (let i = 0; i <= 100; i++) {
         const t = new Date(times.sunrise.getTime() + (times.sunset.getTime() - times.sunrise.getTime()) * (i / 100));
-        const pos = SunCalc.getPosition(t, centerLat, centerLon);
+        const pos = SunCalc.getPosition(t, windOriginLat, windOriginLon);
         const az = (pos.azimuth * 180 / Math.PI + 180) % 360;
-        const lat = clubhouseLat + Math.cos(az * Math.PI / 180) * radius;
-        const lon = clubhouseLon + Math.sin(az * Math.PI / 180) * (radius / Math.cos(clubhouseLat * Math.PI / 180));
+        const lat = windOriginLat + Math.cos(az * Math.PI / 180) * radius;
+        const lon = windOriginLon + Math.sin(az * Math.PI / 180) * (radius / Math.cos(windOriginLat * Math.PI / 180));
         arcPoints.push([lat, lon]);
       }
 
       if (sunPathPolyline) map.removeLayer(sunPathPolyline);
       sunPathPolyline = L.polyline(arcPoints, { color: '#ffb700', weight: 2, dashArray: '4 8', opacity: 0.7 }).addTo(map);
 
-      const currentLat = clubhouseLat + Math.cos(sunAzimuth * Math.PI / 180) * radius;
-      const currentLon = clubhouseLon + Math.sin(sunAzimuth * Math.PI / 180) * (radius / Math.cos(clubhouseLat * Math.PI / 180));
+      const currentLat = windOriginLat + Math.cos(sunAzimuth * Math.PI / 180) * radius;
+      const currentLon = windOriginLon + Math.sin(sunAzimuth * Math.PI / 180) * (radius / Math.cos(windOriginLat * Math.PI / 180));
       const sunIcon = L.divIcon({ className: '', html: '<div class="sun-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
       
       if (!sunMarker) sunMarker = L.marker([currentLat, currentLon], { icon: sunIcon, interactive: false }).addTo(map);
