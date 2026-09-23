@@ -1,219 +1,549 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+  <!-- Définition du jeu de caractères pour éviter les problèmes d'affichage des accents -->
   <meta charset="UTF-8" />
+  
+  <!-- Configuration du viewport pour une expérience optimale sur mobile (empêche le zoom manuel de l'utilisateur) -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  
   <title>DLXR Tracker V5</title>
+  
+  <!-- Importation de la feuille de style Leaflet (bibliothèque de cartographie open-source) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <!-- Importation de polices Google Fonts pour un look "HUD / Tech" -->
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet" />
+  
   <style>
-    /* ... (Le CSS reste identique, mais il faudra prévoir des styles pour générer plusieurs panneaux de télémétrie) ... */
-    /* 🟢 POUR LE MULTI-ÉMETTEURS : Il faudra transformer #panel en conteneur (ex: #drones-container) et créer des classes génériques (.drone-panel) pour instancier un bloc par drone. */
+    /* VARIABLES CSS - Palette de couleurs façon interface futuriste (Dark Mode) */
     :root {
-      --bg:        #0a0e1a;
-      --panel:     #0f1628;
-      --border:    #1e2d4a;
-      --accent:    #00d4ff;
-      --accent2:   #ff6b35;
-      --green:     #00ff9d;
-      --yellow:    #ffd700;
-      --red:       #ff3b5c;
-      --text:      #e0eeff;
-      --muted:     #4a6080;
-      --mono:      'Share Tech Mono', monospace;
-      --sans:      'Exo 2', sans-serif;
+      --bg:        #0a0e1a; /* Fond principal de l'application */
+      --panel:     #0f1628; /* Fond des panneaux (header, dashboard) */
+      --border:    #1e2d4a; /* Couleur des séparateurs et bordures */
+      --accent:    #00d4ff; /* Couleur principale (Cyan) pour les éléments actifs/positifs */
+      --accent2:   #ff6b35; /* Couleur secondaire (Orange) pour alerter ou marquer le sol */
+      --green:     #00ff9d; /* Vert de validation (haute qualité de signal) */
+      --yellow:    #ffd700; /* Jaune pour les avertissements ou l'ID */
+      --red:       #ff3b5c; /* Rouge pour les erreurs */
+      --text:      #e0eeff; /* Couleur du texte principal (bleu très clair) */
+      --muted:     #4a6080; /* Couleur du texte secondaire/inactif (gris bleuté) */
+      --mono:      'Share Tech Mono', monospace; /* Police pour les données chiffrées */
+      --sans:      'Exo 2', sans-serif; /* Police pour les labels et textes généraux */
     }
-    /* ... (CSS omis pour la clarté, garde ton CSS existant) ... */
+
+    /* Reset global pour éviter les marges par défaut des navigateurs */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* Configuration du corps de la page */
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      height: 100dvh; /* Utilisation de 100dvh (dynamic viewport height) pour corriger les bugs sur Safari Mobile */
+      display: flex;
+      flex-direction: column; /* Structure en colonne : Header -> Carte -> Dashboard */
+      overflow: hidden; /* Empêche le défilement de la page entière */
+    }
+
+    /* EN-TÊTE DE L'APPLICATION */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between; /* Espace au maximum le logo et le bouton */
+      padding: 10px 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      z-index: 1000; /* Assure que le header reste au-dessus de la carte Leaflet */
+      flex-shrink: 0; /* Empêche le header de s'écraser si l'écran est trop petit */
+    }
+
+    /* LOGO */
+    .logo {
+      font-family: var(--mono);
+      font-size: 1.1rem;
+      color: var(--accent);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+    .logo span { color: var(--accent2); } /* Met le "X" en orange */
+
+    /* BOUTON DE CONNEXION BLUETOOTH */
+    #ble-btn {
+      background: transparent;
+      border: 1.5px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all 0.2s; /* Animation douce au survol */
+    }
+    #ble-btn:hover { background: var(--accent); color: var(--bg); }
+    
+    /* État du bouton quand le drone est connecté */
+    #ble-btn.connected { border-color: var(--green); color: var(--green); }
+    #ble-btn.connected:hover { background: var(--green); color: var(--bg); }
+
+    /* CONTENEUR DE LA CARTE LEAFLET */
+    #map { 
+      flex: 1; /* Prend tout l'espace restant entre le header et le panneau du bas */
+      width: 100%; 
+      z-index: 1; 
+    }
+
+    /* PANNEAU DE TÉLÉMÉTRIE (Bas de l'écran) */
+    #panel {
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+      padding: 8px 16px 12px;
+      flex-shrink: 0;
+      z-index: 1000;
+    }
+
+    /* Lignes individuelles d'information dans le panneau */
+    .info-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .info-row:last-of-type { border-bottom: none; } /* Enlève la ligne sous le dernier élément */
+
+    /* Titres des données (ex: "Pos. Modèle") */
+    .info-label {
+      font-size: 0.9rem;
+      flex-shrink: 0; /* Empêche le label d'être tronqué */
+    }
+
+    /* Valeurs des données */
+    .info-item {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis; /* Ajoute "..." si la donnée est trop longue */
+    }
+    /* Classes utilitaires pour colorer spécifiquement certaines valeurs */
+    .info-item.accent { color: var(--accent); }
+    .info-item.muted  { color: var(--muted); }
+    .info-item.yellow { color: var(--yellow); }
+
+    /* BADGE D'ÉTAT DU DRONE (BOOT, LOW, HIGH, GROUND) */
+    .state-badge {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 3px;
+      letter-spacing: 2px;
+      background: var(--muted); /* Gris par défaut */
+      color: var(--bg);
+      transition: all 0.3s;
+      flex-shrink: 0;
+    }
+    /* Couleurs dynamiques selon l'état de vol */
+    .state-badge.BOOT   { background: var(--yellow); }
+    .state-badge.LOW    { background: var(--accent); }
+    .state-badge.HIGH   { background: var(--green); }
+    .state-badge.GROUND { background: var(--accent2); }
+
+    /* TEXTE DE STATUT GÉNÉRAL (tout en bas) */
+    #status {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 8px;
+      letter-spacing: 1px;
+    }
+
+    /* CSS PERSONNALISÉ POUR LE MARQUEUR DU DRONE (Viseur) */
+    .drone-marker {
+      width: 16px; height: 16px; position: relative;
+    }
+    /* Création de la croix du viseur avec les pseudo-éléments ::before et ::after */
+    .drone-marker::before, .drone-marker::after {
+      content: ''; position: absolute; background: #00d4ff;
+    }
+    .drone-marker::before { width: 16px; height: 2px; top: 7px; left: 0; } /* Barre horizontale */
+    .drone-marker::after  { width: 2px; height: 16px; top: 0; left: 7px; } /* Barre verticale */
+    
+    /* Point central orange du viseur */
+    .drone-dot {
+      position: absolute; width: 4px; height: 4px;
+      background: #ff6b35; border-radius: 50%; top: 6px; left: 6px;
+    }
+
+    /* CSS PERSONNALISÉ POUR LE MARQUEUR DU PILOTE (Point bleu pulsant) */
+    .user-marker {
+      width: 14px; height: 14px;
+      background: #4a90ff; border: 2px solid white; border-radius: 50%;
+      box-shadow: 0 0 8px rgba(74,144,255,0.8);
+      animation: userpulse 2s infinite; /* Lance l'animation de pulsation en boucle */
+    }
+    /* Animation de pulsation (effet "sonar" lumineux) */
+    @keyframes userpulse {
+      0%   { box-shadow: 0 0 4px rgba(74,144,255,0.8); }
+      50%  { box-shadow: 0 0 14px rgba(74,144,255,1); }
+      100% { box-shadow: 0 0 4px rgba(74,144,255,0.8); }
+    }
+
+    /* FILTRE DARK MODE POUR LA CARTE LEAFLET */
+    /* Assombrit, désature, inverse les couleurs (invert) et tourne la teinte pour obtenir un bleu sombre sur des tuiles de base claires */
+    .leaflet-tile { filter: brightness(0.85) saturate(0.7) hue-rotate(180deg) invert(1); }
+    .leaflet-container { background: #0a0e1a; } /* Évite les flashs blancs lors du chargement des tuiles */
+
+    /* BOUTON DE RECENTRAGE DE LA CARTE */
+    #center-btn {
+      position: absolute;
+      bottom: 260px; /* Positionné juste au-dessus du panneau inférieur */
+      right: 16px;
+      z-index: 999; /* Au-dessus de la carte, sous les popups */
+      background: var(--panel);
+      border: 1.5px solid var(--border);
+      color: var(--accent);
+      width: 40px; height: 40px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
   </style>
 </head>
 <body>
 
+  <!-- EN-TÊTE -->
   <header>
     <div class="logo">DL<span>X</span>R V5</div>
+    <!-- Déclenche la fonction connectBLE() lors du clic -->
     <button id="ble-btn" onclick="connectBLE()">⚡ CONNECTER</button>
   </header>
 
+  <!-- CONTENEUR CARTE -->
   <div id="map"></div>
+  
+  <!-- BOUTON CENTRER -->
   <button id="center-btn" onclick="centerMap()" title="Centrer sur le drone">🎯</button>
 
-  <!-- 🔴 MONO-ÉMETTEUR : L'interface est statique et codée en dur avec des ID uniques (ex: id="m-rssi"). -->
-  <!-- 🟢 POUR LE MULTI-ÉMETTEURS : Ce #panel devra être vidé au départ. La fonction JS devra créer ces <div> dynamiquement avec document.createElement() pour chaque nouvel ID de drone reçu. -->
+  <!-- PANNEAU DE DONNÉES -->
   <div id="panel">
+    <!-- Ligne 1 : État transmission et données critiques (RSSI, Altitude) -->
     <div class="info-row">
       <span id="state-badge" class="state-badge">--</span>
       <span class="info-item" id="m-rssi">RSSI:--</span>
       <span class="info-item accent" id="m-alt">Alt.sol: -- m</span>
       <span class="info-item" id="m-rx">Tr.reçues:0</span>
     </div>
+    
+    <!-- Ligne 2 : Position GPS du modèle et distance -->
     <div class="info-row">
       <span class="info-label">Pos. Modèle</span>
       <span class="info-item accent" id="m-pos">Attente signal...</span>
       <span class="info-item accent" id="m-dist">-- m</span>
     </div>
+    
+    <!-- Ligne 3 : Position GPS du téléphone (Pilote) -->
     <div class="info-row">
       <span class="info-label">Home</span>
       <span class="info-item muted" id="m-mypos">Localisation...</span>
     </div>
+    
+    <!-- Ligne 4 : Affichage de l'identifiant légal (DGAC / Alpha Tango) -->
     <div class="info-row">
       <span class="info-label">ID DGAC</span>
       <span class="info-item yellow" id="m-id">--</span>
     </div>
+    
+    <!-- Barre de statut globale (Logs) -->
     <div id="status">EN ATTENTE DE CONNEXION BLE</div>
   </div>
 
+  <!-- Importation du script Leaflet -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
   <script>
+    // UUIDs spécifiques au module Bluetooth (doivent correspondre au code ESP32/Arduino)
     const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
     const CHARACT_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 
-    let bleDevice = null, bleCharact = null;
-    
-    // 🔴 MONO-ÉMETTEUR : Variables globales uniques pour UN SEUL drone.
-    // 🟢 POUR LE MULTI-ÉMETTEURS : Remplacer toutes ces variables par un objet global.
-    // Exemple : 
-    // let drones = {}; 
-    // Ce qui donnera : drones["drone1"] = { rxCount: 0, marker: null, tracePath: [], polyline: null, lastLat: null, lastLon: null, linkLine: null };
-    let rxCount = 0, droneMarker = null;
-    let tracePath = [], polyline = null, linkLine = null;
-    let autoCenter = true, lastLat = null, lastLon = null;
-    
-    // Variables du pilote (Celles-ci restent uniques car il n'y a qu'un seul smartphone/récepteur)
-    let userMarker = null;
-    let myLat = null, myLon = null;
+    // Variables globales pour gérer l'état de l'application
+    let bleDevice = null, bleCharact = null; // Objets Bluetooth
+    let rxCount = 0; // Compteur de trames reçues
+    let droneMarker = null, userMarker = null; // Objets marqueurs Leaflet
+    let tracePath = [], polyline = null, linkLine = null; // Objets tracés Leaflet
+    let autoCenter = true; // Boolean : la carte suit-elle le drone automatiquement ?
+    let lastLat = null, lastLon = null; // Dernière position connue du drone
+    let myLat = null, myLon = null; // Position actuelle du pilote
 
+    // INITIALISATION DE LA CARTE LEAFLET
+    // Centre par défaut sur Paris, zoom retiré pour gagner de la place
     const map = L.map('map', { center: [48.8566, 2.3522], zoom: 15, zoomControl: false });
+    
+    // Ajout des tuiles de carte (OpenStreetMap)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap', maxZoom: 19
     }).addTo(map);
+    
+    // Repositionnement manuel des boutons de zoom en haut à gauche
+    L.control.zoom({ position: 'topleft' }).addTo(map);
+    
+    // Si l'utilisateur touche et glisse la carte, on désactive le centrage automatique sur le drone
     map.on('dragstart', () => { autoCenter = false; });
 
-    // Icones Leaflet
-    const droneIcon = L.divIcon({ /* ... */ });
-    const userIcon = L.divIcon({ /* ... */ });
+    // CRÉATION DES ICÔNES PERSONNALISÉES (à partir du CSS défini plus haut)
+    // Icône du Drone
+    const droneIcon = L.divIcon({
+      className: '', // On retire la classe par défaut de Leaflet
+      html: '<div class="drone-marker"><div class="drone-dot"></div></div>',
+      iconSize: [16, 16], 
+      iconAnchor: [8, 8] // Le "centre" de l'icône pointe sur la coordonnée GPS
+    });
 
+    // Icône du Pilote
+    const userIcon = L.divIcon({
+      className: '',
+      html: '<div class="user-marker"></div>',
+      iconSize: [14, 14], 
+      iconAnchor: [7, 7]
+    });
+
+    /**
+     * Active le GPS du téléphone pour suivre la position du pilote.
+     */
     function startGeolocation() {
-      if (!navigator.geolocation) return;
+      if (!navigator.geolocation) return; // Si le navigateur ne gère pas le GPS, on abandonne
+      
+      // watchPosition met à jour les coordonnées à chaque déplacement du téléphone
       navigator.geolocation.watchPosition(pos => {
         myLat = pos.coords.latitude;
         myLon = pos.coords.longitude;
+        
+        // Si le marqueur du pilote n'existe pas encore, on le crée
         if (!userMarker) {
-          userMarker = L.marker([myLat, myLon], { icon: userIcon }).addTo(map);
-          map.setView([myLat, myLon], 15); 
+          userMarker = L.marker([myLat, myLon], { icon: userIcon })
+            .bindTooltip('📍 Moi', { permanent: false, direction: 'top' })
+            .addTo(map);
+          map.setView([myLat, myLon], 15);  // Au premier fix GPS, on centre sur le pilote
         } else {
+          // Si le marqueur existe, on met juste à jour sa position
           userMarker.setLatLng([myLat, myLon]);
         }
-        document.getElementById('m-mypos').textContent = `${myLat.toFixed(6)}, ${myLon.toFixed(6)}`;
         
-        // 🔴 MONO-ÉMETTEUR : Met à jour la ligne vers UN SEUL drone.
-        // 🟢 POUR LE MULTI-ÉMETTEURS : Il faudra boucler sur l'objet `drones` pour mettre à jour la ligne de chaque drone vers le pilote.
-        // Exemple : for (let id in drones) { updateLinkLine(id); }
-        updateLinkLine();
-      }, () => {}, { enableHighAccuracy: true, maximumAge: 2000 });
+        // Mise à jour de l'UI avec les coordonnées du pilote
+        document.getElementById('m-mypos').textContent =
+          `${myLat.toFixed(6)}, ${myLon.toFixed(6)}`;
+          
+        updateLinkLine(); // Met à jour la ligne tracée entre le pilote et le drone
+      }, () => {}, { enableHighAccuracy: true, maximumAge: 2000 }); // Options : GPS haute précision exigé
     }
 
-    // 🟢 POUR LE MULTI-ÉMETTEURS : Ajouter un paramètre `droneId` -> function updateLinkLine(droneId)
+    /**
+     * Dessine ou met à jour une ligne en pointillés reliant le pilote au drone.
+     */
     function updateLinkLine() {
+      // S'il nous manque l'une des deux positions, on ne trace rien
       if (myLat === null || lastLat === null) return;
+      
       const pts = [[myLat, myLon], [lastLat, lastLon]];
+      
       if (linkLine) {
-        linkLine.setLatLngs(pts);
+        linkLine.setLatLngs(pts); // Mise à jour de la ligne existante
       } else {
-        linkLine = L.polyline(pts, { color: '#ffd700', weight: 1, opacity: 0.5, dashArray: '4 8' }).addTo(map);
+        // Création de la ligne en pointillés (dashArray '4 8')
+        linkLine = L.polyline(pts, {
+          color: '#ffd700', weight: 1, opacity: 0.5, dashArray: '4 8'
+        }).addTo(map);
       }
     }
 
-    // 🔴 MONO-ÉMETTEUR : Cette fonction ne gère qu'un marqueur et qu'un tracé.
-    // 🟢 POUR LE MULTI-ÉMETTEURS : Ajouter le paramètre `droneId` -> function updateMap(droneId, lat, lon)
-    // Et utiliser drones[droneId].droneMarker, drones[droneId].tracePath, etc.
+    /**
+     * Met à jour la position du drone sur la carte et dessine son sillage.
+     */
     function updateMap(lat, lon) {
       const latlng = [lat, lon];
+      
+      // Gestion du marqueur du drone
       if (!droneMarker) {
-        droneMarker = L.marker(latlng, { icon: droneIcon }).addTo(map);
-        map.setView(latlng, 16);
+        droneMarker = L.marker(latlng, { icon: droneIcon })
+          .bindTooltip('🎯 Drone', { permanent: false, direction: 'top' })
+          .addTo(map);
+        map.setView(latlng, 16); // Premier fix drone : on centre la caméra sur lui
       } else {
         droneMarker.setLatLng(latlng);
       }
       
+      // Ajout de la nouvelle coordonnée dans le tableau de l'historique du tracé (sillage)
       tracePath.push(latlng);
       if (polyline) {
         polyline.setLatLngs(tracePath);
       } else {
-        polyline = L.polyline(tracePath, { color: '#00d4ff', weight: 2 }).addTo(map);
+        // Création du tracé (ligne continue, de couleur cyan)
+        polyline = L.polyline(tracePath, {
+          color: '#00d4ff', weight: 2, opacity: 0.6, dashArray: '4 6'
+        }).addTo(map);
       }
+      
+      // Si l'utilisateur n'a pas bougé la carte manuellement, la caméra suit le drone
       if (autoCenter) map.panTo(latlng);
+      
       updateLinkLine();
     }
 
-    // 🟢 POUR LE MULTI-ÉMETTEURS : Le centrage nécessitera de calculer le centre de tous les marqueurs (bounds) 
-    // ou de cibler un drone spécifique (ex: drones[selectedDrone].lastLat).
+    /**
+     * Fonction appelée par le bouton 🎯 pour forcer la caméra à revenir sur le drone.
+     */
     function centerMap() {
-      autoCenter = true;
-      if (lastLat !== null) map.setView([lastLat, lastLon], 16);
+      autoCenter = true; // Réactive le suivi automatique
+      if (lastLat !== null) map.setView([lastLat, lastLon], 16); // Centre immédiatement
     }
 
+    /**
+     * Traite les données JSON reçues via Bluetooth.
+     */
     function handleData(json) {
       try {
-        const d = JSON.parse(json);
+        const d = JSON.parse(json); // Conversion de la chaîne de texte en objet Javascript
 
-        // 🟢 POUR LE MULTI-ÉMETTEURS : C'est ICI qu'il faut récupérer un identifiant. 
-        // Ton ESP32 doit envoyer un ID dans le JSON (ex: {"id_drone": 1, "lat":..., "lon":...}).
-        // const droneId = d.id_drone;
-        // if (!drones[droneId]) { createNewDroneInUIAndMap(droneId); } // Initialise les variables et crée le HTML si nouveau drone.
-
-        // Trame indicatif Alpha Tango
+        // CAS 1 : C'est une trame contenant l'identifiant légal (DGAC / Alpha Tango)
         if (d.id !== undefined) {
           document.getElementById('m-id').textContent = d.id;
-          return;
+          setStatus('ID ALPHA TANGO REÇU');
+          return; // On arrête le traitement ici pour ce type de trame
         }
 
-        // 🔴 MONO-ÉMETTEUR : On incrémente un compteur global.
-        // 🟢 POUR LE MULTI-ÉMETTEURS : drones[droneId].rxCount++;
-        rxCount++;
+        // CAS 2 : C'est une trame de télémétrie classique (GPS, Altitude, etc.)
+        rxCount++; // Incrémentation du compteur de trames
         
-        const etat = (d.etat || '--').toUpperCase();
-        const alt  = Math.max(0, parseFloat(d.alt  || 0)).toFixed(0);
-        const dist = parseFloat(d.dist || 0);
-        const rssi = parseFloat(d.rssi || 0).toFixed(0);
+        // Extraction et formatage des variables (avec fallback par défaut si données manquantes)
+        const etat = (d.etat || '--').toUpperCase(); // État du vol
+        const alt  = Math.max(0, parseFloat(d.alt  || 0)).toFixed(0); // Altitude, on évite les valeurs négatives
+        const dist = parseFloat(d.dist || 0); // Distance du point de décollage
+        const rssi = parseFloat(d.rssi || 0).toFixed(0); // Puissance du signal radio
         const lat  = parseFloat(d.lat  || 0);
         const lon  = parseFloat(d.lon  || 0);
-        const moved = d.moved !== false;
+        const moved = d.moved !== false; // Flag pour savoir si le drone est en mouvement au sol
 
-        // 🔴 MONO-ÉMETTEUR : Modification des éléments HTML via des ID fixes.
-        // 🟢 POUR LE MULTI-ÉMETTEURS : Cibler l'élément spécifique au drone.
-        // Exemple : document.getElementById(`m-alt-${droneId}`).textContent = ...
+        // Mise à jour du badge visuel (la couleur change grâce aux classes CSS)
         const badge = document.getElementById('state-badge');
         badge.textContent = etat;
         badge.className   = 'state-badge ' + etat;
 
+        // Mise à jour de l'UI (Dashboard)
         document.getElementById('m-rssi').textContent = `RSSI:${rssi}`;
         document.getElementById('m-alt').textContent  = `Alt.sol:${alt}m`;
-        document.getElementById('m-dist').textContent = dist < 1000 ? `${dist.toFixed(0)} m` : `${(dist / 1000).toFixed(2)} km`;
+        
+        // Formatage de la distance : en mètres si < 1km, en kilomètres sinon
+        document.getElementById('m-dist').textContent = dist < 1000
+          ? `${dist.toFixed(0)} m`
+          : `${(dist / 1000).toFixed(2)} km`;
+          
         document.getElementById('m-rx').textContent = `Tr.reçues:${rxCount}`;
 
+        // Si on a un vrai point GPS (pas de valeurs à 0), on met en mémoire et on affiche
         if (lat !== 0 && lon !== 0) {
-          lastLat = lat; // 🟢 Remplacer par drones[droneId].lastLat = lat;
-          lastLon = lon; // 🟢 Remplacer par drones[droneId].lastLon = lon;
-          document.getElementById('m-pos').textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+          lastLat = lat;
+          lastLon = lon;
+          document.getElementById('m-pos').textContent =
+            `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
         }
 
+        // Gestion de l'état GROUND (drone posé au sol) et notification dans la barre de statut
         if (etat === 'GROUND' && !moved) {
-          document.getElementById('m-pos').textContent = `AU SOL — ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-          if (lat !== 0 && lon !== 0) updateMap(lat, lon); // 🟢 Passer le droneId : updateMap(droneId, lat, lon)
+          document.getElementById('m-pos').textContent =
+            `AU SOL — ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+          if (lat !== 0 && lon !== 0) updateMap(lat, lon);
+          setStatus(`DRONE AU SOL — TRAME #${rxCount}`);
         } else {
-          if (lat !== 0 && lon !== 0) updateMap(lat, lon); // 🟢 Passer le droneId : updateMap(droneId, lat, lon)
+          if (lat !== 0 && lon !== 0) updateMap(lat, lon);
+          setStatus(`TRAME #${rxCount} — ${etat}`);
         }
 
       } catch(e) {
+        // En cas de transmission Bluetooth corrompue entraînant un JSON invalide
         setStatus('ERREUR PARSING JSON');
       }
     }
 
-    // Le reste du code BLE reste intact car tu as toujours un seul récepteur (ESP32) connecté au téléphone.
-    // L'ESP32 se chargera de recevoir les trames de plusieurs drones en LoRa et de toutes les transférer via cet unique lien BLE.
-    async function connectBLE() { /* ... (identique) ... */ }
-    function onDisconnected() { /* ... (identique) ... */ }
-    function setStatus(msg) { document.getElementById('status').textContent = msg; }
+    /**
+     * Fonction principale de connexion via l'API Web Bluetooth.
+     * Nécessite HTTPS et une action de l'utilisateur (le clic sur le bouton) pour être autorisée.
+     */
+    async function connectBLE() {
+      if (!navigator.bluetooth) {
+        setStatus('WEB BLUETOOTH NON SUPPORTÉ — UTILISE CHROME');
+        return;
+      }
+      try {
+        setStatus('RECHERCHE DLXR_RX...');
+        
+        // 1. Ouvre la popup du navigateur pour chercher l'appareil spécifiquement nommé 'DLXR_RX'
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ name: 'DLXR_RX' }], optionalServices: [SERVICE_UUID]
+        });
+        
+        // Ajout d'un écouteur en cas de perte de connexion
+        bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+        
+        setStatus('CONNEXION EN COURS...');
+        
+        // 2. Connexion au serveur GATT du périphérique
+        const server  = await bleDevice.gatt.connect();
+        
+        // 3. Récupération du service principal
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        
+        // 4. Récupération de la caractéristique (le "canal" où passent les données)
+        bleCharact    = await service.getCharacteristic(CHARACT_UUID);
+        
+        // 5. Lecture immédiate de la valeur actuelle
+        const val = await bleCharact.readValue();
+        handleData(new TextDecoder().decode(val));
+        
+        // 6. Abonnement aux notifications (le drone enverra les trames de lui-même sans qu'on demande)
+        await bleCharact.startNotifications();
+        
+        // 7. Écouteur : à chaque nouvelle trame reçue, on décode les bytes en texte et on traite le JSON
+        bleCharact.addEventListener('characteristicvaluechanged', e => {
+          handleData(new TextDecoder().decode(e.target.value));
+        });
+        
+        // Modification visuelle du bouton pour confirmer la connexion
+        const btn = document.getElementById('ble-btn');
+        btn.textContent = '✓ CONNECTÉ';
+        btn.classList.add('connected');
+        
+        setStatus('BLE CONNECTÉ — EN ÉCOUTE');
+      } catch(e) {
+        setStatus('ERREUR BLE: ' + e.message);
+      }
+    }
 
+    /**
+     * Callback déclenché automatiquement si le module Bluetooth est déconnecté 
+     * (hors de portée, batterie faible, etc.)
+     */
+    function onDisconnected() {
+      const btn = document.getElementById('ble-btn');
+      btn.textContent = '⚡ CONNECTER';
+      btn.classList.remove('connected');
+      setStatus('BLE DÉCONNECTÉ — APPUIE POUR RECONNECTER');
+    }
+
+    /**
+     * Met à jour la petite barre de texte tout en bas de l'écran.
+     */
+    function setStatus(msg) {
+      document.getElementById('status').textContent = msg;
+    }
+
+    // Lancement de la géolocalisation du téléphone dès le chargement de la page
     startGeolocation();
   </script>
 </body>
