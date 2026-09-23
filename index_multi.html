@@ -449,8 +449,8 @@ windVectorLayer.clearLayers();
 const windDestinationBearing = windDir + 180; 
 
 if (windSpeed > 0) {
-  // Vecteur global (échelle: 1 km/h = 1.5m sur la carte)
-  const windDestCoords = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, windSpeed * 1.5, windDestinationBearing);
+  // Vecteur global (échelle: 1 km/h = 5.1m sur la carte)
+  const windDestCoords = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, windSpeed * 5.1, windDestinationBearing);
   L.polyline([[CONFIG.origin.lat, CONFIG.origin.lon], windDestCoords], {color: alertColor, weight: 4}).addTo(windVectorLayer);
   
   // Pointe de la flèche
@@ -463,7 +463,7 @@ if (windSpeed > 0) {
 if (absCrosswind > 0) {
   // Vecteur traversier
   const crosswindDirection = crosswind > 0 ? (CONFIG.runway1.heading - 90) : (CONFIG.runway1.heading + 90);
-  const crossDestCoords = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, absCrosswind * 1.5, crosswindDirection);
+  const crossDestCoords = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, absCrosswind * 5.1, crosswindDirection);
   L.polyline([[CONFIG.origin.lat, CONFIG.origin.lon], crossDestCoords], {color: '#ff3b5c', weight: 6, lineCap: 'round'}).addTo(windVectorLayer);
 }
 
