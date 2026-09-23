@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>DLXR Tracker V6.10 - MÉTÉO GO/NO-GO</title>
+  <title>DLXR Tracker V6.11 - CORRECTION MÉTÉO & PISTES</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet" />
@@ -24,10 +24,7 @@
       --red:       #ff3b5c;
       --text:      #e0eeff;
       --muted:     #4a6080;
-      
-      /* Variable dynamique modifiée par JS selon l'indice de vol à l'instant T */
-      --weather-color: #00ff9d; 
-      
+      --weather-color: #00ff9d; /* Variable dynamique modifiée par JS selon les rafales */
       --mono:      'Share Tech Mono', monospace;
       --sans:      'Exo 2', sans-serif;
     }
@@ -57,7 +54,7 @@
     .wind-arrow { width: 22px; height: 22px; transition: transform 0.5s ease; }
     .wind-data { display: flex; flex-direction: column; gap: 2px; }
     .wind-text { font-family: var(--mono); font-size: 0.7rem; color: #fff; }
-    /* La couleur des textes d'alerte suit l'indice global */
+    .crosswind { color: var(--red); font-weight: bold; }
     .warning { color: var(--weather-color); font-weight: bold; text-shadow: 0 0 4px rgba(0,0,0,0.8); }
 
     /* ========================================== */
@@ -72,7 +69,6 @@
     .slider-row label { font-size: 0.75rem; font-weight: 600; display: flex; justify-content: space-between; }
     .slider-row span { font-family: var(--mono); color: var(--weather-color); transition: color 0.3s; text-shadow: 0 0 2px rgba(0,0,0,0.5); }
     
-    /* Curseurs : La barre (track) reçoit le dégradé via le JS, le bouton (thumb) prend la couleur actuelle */
     input[type=range] { 
       -webkit-appearance: none; width: 100%; height: 8px; border-radius: 4px; outline: none; 
       box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
@@ -90,8 +86,7 @@
     .runway-label { background: rgba(30, 45, 74, 0.85); color: white; border: 1px solid #4a90ff; border-radius: 4px; padding: 2px 6px; font-family: var(--mono); font-size: 0.7rem; font-weight: bold; text-align: center; }
     .runway-label.secondary { background: rgba(42, 42, 42, 0.85); border-color: #666; color: #ccc; }
     .sun-marker { width: 14px; height: 14px; background: #ffb700; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 10px #ffb700; }
-    .onmap-wind-container { position: absolute; width: 160px; height: 160px; transform: translate(-50%, -50%); pointer-events: none; }
-
+    
     /* PANNEAUX DRONES ET BOUTONS */
     #drones-container { background: var(--bg); border-top: 1px solid var(--border); max-height: 35vh; overflow-y: auto; z-index: 1000; display: flex; flex-direction: column; gap: 5px; padding: 5px; }
     .drone-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; }
@@ -119,7 +114,7 @@
 <body>
 
   <header>
-    <div class="logo">DL<span>X</span>R V6.10 <span>METEO</span></div>
+    <div class="logo">DL<span>X</span>R V6.11 <span>METEO</span></div>
     <button id="ble-btn" onclick="connectBLE()">⚡ AJOUTER RX</button>
   </header>
 
@@ -164,12 +159,12 @@
     // 1. BLOC DE CONFIGURATION CENTRALISÉ
     // ==========================================
     const CONFIG = {
-      origin: { lat: 47.854408, lon: 3.434616 }, 
+      origin: { lat: 47.854408, lon: 3.434616 }, // Point jaune d'origine du vecteur vent
       
       runway1: { 
-        lat1: 47.853890, lon1: 3.434071, 
-        lat2: 47.854850, lon2: 3.435555, 
-        width: 25,                       
+        lat1: 47.852400, lon1: 3.432500, // Restauration des coordonnées parfaitement alignées
+        lat2: 47.854830, lon2: 3.435550, 
+        width: 16,                       
         heading: 51                      
       },
       
@@ -180,8 +175,8 @@
       },
 
       weatherThresholds: {
-        safe: 15,    
-        warning: 35  
+        safe: 15,    // Rafales <= 15 = Vert
+        warning: 35  // Rafales >= 35 = Rouge. (Entre les deux = Jaune)
       },
       
       windScale: 1.5 
@@ -236,12 +231,14 @@
     L.control.zoom({ position: 'topleft' }).addTo(map);
     map.on('dragstart', () => { autoCenter = false; });
 
+    // Bouclier d'événements pour permettre de glisser les curseurs sans bouger la carte
     const timeControls = document.getElementById('time-controls');
     const windWidget = document.getElementById('wind-widget');
     L.DomEvent.disableClickPropagation(timeControls);
     L.DomEvent.disableScrollPropagation(timeControls);
     L.DomEvent.disableClickPropagation(windWidget);
 
+    // Dessin Pistes
     L.polygon(getRunwayPoly(CONFIG.runway1.lat1, CONFIG.runway1.lon1, CONFIG.runway1.lat2, CONFIG.runway1.lon2, CONFIG.runway1.width), { color: '#ffffff', weight: 1.5, fillColor: '#000000', fillOpacity: 0.75 }).addTo(map);
     L.polyline([ [CONFIG.runway1.lat1, CONFIG.runway1.lon1], [CONFIG.runway1.lat2, CONFIG.runway1.lon2] ], { color: '#ffffff', weight: 2, dashArray: '6 8', opacity: 0.8 }).addTo(map);
     L.marker([CONFIG.runway1.lat1, CONFIG.runway1.lon1], { icon: L.divIcon({ className: '', html: '<div class="runway-label">05</div>', iconSize: [24, 16], iconAnchor: [12, 8] }) }).addTo(map);
@@ -252,6 +249,7 @@
     L.marker([CONFIG.runway2.lat1, CONFIG.runway2.lon1], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">14</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
     L.marker([CONFIG.runway2.lat2, CONFIG.runway2.lon2], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">32</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
 
+    // Calques Vectoriels
     const windVectorLayer = L.layerGroup().addTo(map);
     let sunPathPolyline = null, sunMarker = null;
 
@@ -280,7 +278,8 @@
 
     async function loadWeatherData() {
       try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.origin.lat}&longitude=${CONFIG.origin.lon}&hourly=windspeed_10m,winddirection_10m,windgusts_10m,precipitation,weathercode&past_days=7&forecast_days=7&timezone=auto`;
+        // CORRECTION DE L'ERREUR 400 DE L'API : Le paramètre exact est "weather_code"
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.origin.lat}&longitude=${CONFIG.origin.lon}&hourly=windspeed_10m,winddirection_10m,windgusts_10m,precipitation,weather_code&past_days=7&forecast_days=7&timezone=auto`;
         const res = await fetch(url);
         const data = await res.json();
         weatherData = data.hourly;
@@ -326,7 +325,7 @@
           targetDate, 
           weatherData.windgusts_10m[dataIndex], 
           weatherData.precipitation[dataIndex], 
-          weatherData.weathercode[dataIndex]
+          weatherData.weather_code[dataIndex]
         );
         const percent = (h / 23) * 100;
         stops.push(`${color} ${percent}%`);
@@ -350,7 +349,7 @@
           if (altDegrees >= -6) {
             sumGusts += weatherData.windgusts_10m[dataIndex] || 0;
             sumPrecip += weatherData.precipitation[dataIndex] || 0;
-            const wmo = weatherData.weathercode[dataIndex];
+            const wmo = weatherData.weather_code[dataIndex];
             if (wmo === 45 || wmo === 48) fogHours++;
             dayHours++;
           }
@@ -389,7 +388,7 @@
       const windDir = weatherData.winddirection_10m[dataIndex] || 0;
       const windGusts = weatherData.windgusts_10m[dataIndex] || 0;
       const precip = weatherData.precipitation[dataIndex] || 0;
-      const wmo = weatherData.weathercode[dataIndex] || 0;
+      const wmo = weatherData.weather_code[dataIndex] || 0;
 
       document.getElementById('label-date').textContent = targetDate.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' });
       document.getElementById('label-time').textContent = targetDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -421,7 +420,6 @@
         const windDestCoords = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, windSpeed * CONFIG.windScale, windDestinationBearing);
         L.polyline([[CONFIG.origin.lat, CONFIG.origin.lon], windDestCoords], {color: alertColor, weight: 4}).addTo(windVectorLayer);
         
-        // Pointe flèche (taille réduite à 4 mètres au lieu de 10)
         const barbLength = 4;
         const barb1 = computeDestinationPoint(windDestCoords[0], windDestCoords[1], barbLength, windDestinationBearing + 160); 
         const barb2 = computeDestinationPoint(windDestCoords[0], windDestCoords[1], barbLength, windDestinationBearing - 160);
