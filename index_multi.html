@@ -223,7 +223,7 @@
     let autoCenter = true; 
     let centerThrottleTimeout = null; // Variable pour éviter le "Map Jittering"
 
-    const map = L.map('map', { center: [48.8566, 2.3522], zoom: 15, zoomControl: false });
+const map = L.map('map', { center: [47.8545, 3.4348], zoom: 17, zoomControl: false });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM', maxZoom: 19 }).addTo(map);
     L.control.zoom({ position: 'topleft' }).addTo(map);
     
