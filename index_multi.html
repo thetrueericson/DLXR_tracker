@@ -1,154 +1,502 @@
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
-#include <ArduinoJson.h>
-#include <esp_system.h> // Nécessaire pour lire la MAC address
-
-// ---------------------------------------------------------
-// PARAMÈTRES BLUETOOTH
-// ---------------------------------------------------------
-// Les UUIDs doivent correspondre EXACTEMENT à ceux du code JavaScript (Web Bluetooth)
-#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-
-BLEServer* pServer = NULL;
-BLECharacteristic* pCharacteristic = NULL;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
-
-// Tableaux pour stocker les noms générés dynamiquement
-char deviceName[25];
-char droneId[25];
-
-// ---------------------------------------------------------
-// VARIABLES DE SIMULATION
-// ---------------------------------------------------------
-float currentLat = 48.8566; // Point de départ arbitraire
-float currentLon = 2.3522;
-int currentAlt = 0;
-int currentRssi = -40;
-
-// ---------------------------------------------------------
-// CALLBACKS BLUETOOTH (Gestion de la connexion)
-// ---------------------------------------------------------
-class MyServerCallbacks: public BLEServerCallbacks {
-    void onConnect(BLEServer* pServer) {
-      deviceConnected = true;
-      Serial.println("Client BLE connecté !");
-    };
-    void onDisconnect(BLEServer* pServer) {
-      deviceConnected = false;
-      Serial.println("Client BLE déconnecté.");
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>DLXR Tracker V6.1 - MULTI OPTIMISÉ</title>
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet" />
+  
+  <style>
+    :root {
+      --bg:        #0a0e1a;
+      --panel:     #0f1628;
+      --border:    #1e2d4a;
+      --accent:    #00d4ff;
+      --accent2:   #ff6b35;
+      --green:     #00ff9d;
+      --yellow:    #ffd700;
+      --red:       #ff3b5c;
+      --text:      #e0eeff;
+      --muted:     #4a6080;
+      --mono:      'Share Tech Mono', monospace;
+      --sans:      'Exo 2', sans-serif;
     }
-};
 
-// ---------------------------------------------------------
-// INITIALISATION
-// ---------------------------------------------------------
-void setup() {
-  Serial.begin(115200);
-  Serial.println("--- Démarrage du Serveur DLXR_RX ---");
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  // 1. Récupération de l'adresse MAC physique unique de l'ESP32
-  uint8_t mac[6];
-  esp_efuse_mac_get_default(mac);
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
 
-  // 2. Création des noms en utilisant les 2 derniers octets de la MAC
-  // Le préfixe "DLXR_RX_" est requis par le filtre JS (namePrefix)
-  sprintf(deviceName, "DLXR_RX_%02X%02X", mac[4], mac[5]);
-  sprintf(droneId, "Drone_%02X%02X", mac[4], mac[5]);
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      z-index: 1000;
+      flex-shrink: 0;
+    }
 
-  Serial.print("Nom Bluetooth généré : ");
-  Serial.println(deviceName);
-  Serial.print("ID Drone généré : ");
-  Serial.println(droneId);
+    .logo {
+      font-family: var(--mono);
+      font-size: 1.1rem;
+      color: var(--accent);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+    .logo span { color: var(--accent2); }
 
-  // 3. Initialisation du périphérique BLE avec le nom dynamique
-  BLEDevice::init(deviceName);
+    #ble-btn {
+      background: transparent;
+      border: 1.5px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all 0.2s;
+    }
+    #ble-btn:hover { background: var(--accent); color: var(--bg); }
+    #ble-btn.connected { border-color: var(--green); color: var(--green); }
 
-  // 4. Création du serveur et assignation des Callbacks
-  pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
+    #map { flex: 1; width: 100%; z-index: 1; }
 
-  // 5. Création du Service
-  BLEService *pService = pServer->createService(SERVICE_UUID);
+    #drones-container {
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      max-height: 40vh;
+      overflow-y: auto;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 5px;
+    }
 
-  // 6. Création de la Caractéristique (Lecture + Notifications)
-  pCharacteristic = pService->createCharacteristic(
-                      CHARACTERISTIC_UUID,
-                      BLECharacteristic::PROPERTY_READ   |
-                      BLECharacteristic::PROPERTY_NOTIFY
-                    );
+    .drone-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+    }
 
-  // Indispensable pour que l'interface Web (GATT) puisse s'abonner aux notifications
-  pCharacteristic->addDescriptor(new BLE2902());
+    .info-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--bg);
+    }
+    .info-row:last-of-type { border-bottom: none; }
 
-  // 7. Démarrage du service et de l'annonce (Advertising)
-  pService->start();
+    .title-row {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+      margin-bottom: 4px;
+    }
+
+    .info-label { font-size: 0.85rem; font-weight: 600; flex-shrink: 0; }
+    
+    .info-item {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--text);
+      white-space: nowrap;
+    }
+    .info-item.accent { color: var(--accent); }
+    .info-item.muted  { color: var(--muted); }
+    .info-item.yellow { color: var(--yellow); }
+
+    .state-badge {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 3px;
+      letter-spacing: 1px;
+      background: var(--muted);
+      color: var(--bg);
+      transition: background 0.3s;
+    }
+    .state-badge.BOOT    { background: var(--yellow); }
+    .state-badge.LOW     { background: var(--accent); }
+    .state-badge.HIGH    { background: var(--green); }
+    .state-badge.GROUND  { background: var(--accent2); }
+    .state-badge.OFFLINE { background: var(--red); color: white; } /* Nouvel état hors ligne */
+
+    #global-status {
+      background: var(--panel);
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 4px;
+      border-top: 1px solid var(--border);
+    }
+
+    .drone-marker { width: 16px; height: 16px; position: relative; }
+    .drone-marker::before, .drone-marker::after { content: ''; position: absolute; background: #00d4ff; }
+    .drone-marker::before { width: 16px; height: 2px; top: 7px; left: 0; }
+    .drone-marker::after  { width: 2px; height: 16px; top: 0; left: 7px; }
+    .drone-dot { position: absolute; width: 4px; height: 4px; background: #ff6b35; border-radius: 50%; top: 6px; left: 6px; }
+
+    .user-marker {
+      width: 14px; height: 14px;
+      background: #4a90ff; border: 2px solid white; border-radius: 50%;
+      box-shadow: 0 0 8px rgba(74,144,255,0.8);
+      animation: userpulse 2s infinite;
+    }
+    @keyframes userpulse {
+      0%   { box-shadow: 0 0 4px rgba(74,144,255,0.8); }
+      50%  { box-shadow: 0 0 14px rgba(74,144,255,1); }
+      100% { box-shadow: 0 0 4px rgba(74,144,255,0.8); }
+    }
+
+    .leaflet-tile { filter: brightness(0.85) saturate(0.7) hue-rotate(180deg) invert(1); }
+    .leaflet-container { background: #0a0e1a; }
+
+    #center-btn {
+      position: absolute;
+      bottom: 20px;
+      right: 16px;
+      z-index: 999;
+      background: var(--panel);
+      border: 1.5px solid var(--border);
+      color: var(--accent);
+      width: 40px; height: 40px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .map-controls-wrapper { position: relative; width: 100%; height: 0; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">DL<span>X</span>R V6.1 <span>MULTI</span></div>
+    <button id="ble-btn" onclick="connectBLE()">⚡ AJOUTER RX</button>
+  </header>
+
+  <div id="map"></div>
   
-  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(false);
-  pAdvertising->setMinPreferred(0x0); // Aide à la découverte rapide (ex: iOS)
-  BLEDevice::startAdvertising();
+  <div class="map-controls-wrapper">
+    <button id="center-btn" onclick="forceCenterMap()" title="Recadrer sur tous les éléments">🎯</button>
+  </div>
+
+  <div id="global-status">PILOTE: RECHERCHE GPS... | RX CONNECTÉS: 0</div>
   
-  Serial.println("En attente de connexion client via l'interface Web...");
-}
+  <div id="drones-container">
+    <div style="padding: 15px; text-align: center; color: var(--muted); font-size: 0.8rem;">
+      Aucun drone détecté pour le moment.
+    </div>
+  </div>
 
-// ---------------------------------------------------------
-// BOUCLE PRINCIPALE
-// ---------------------------------------------------------
-void loop() {
-  // Si le téléphone/navigateur est connecté, on génère et envoie la trame
-  if (deviceConnected) {
-    
-    // --- SIMULATION DES MOUVEMENTS ---
-    // À remplacer par la lecture de tes vraies données de télémétrie (ex: liaison série vers récepteur)
-    currentLat += 0.0001;
-    currentLon += 0.00005;
-    currentAlt = (currentAlt < 120) ? currentAlt + 1 : 120;
-    currentRssi = random(-90, -40);
-    
-    String etat = (currentAlt < 5) ? "GROUND" : "HIGH";
-
-    // --- CRÉATION DU JSON (avec ArduinoJson 7) ---
-    JsonDocument doc;
-    
-    doc["drone_id"] = droneId; // Utilisation de l'ID généré dynamiquement
-    doc["etat"]     = etat;
-    doc["alt"]      = currentAlt;
-    doc["dist"]     = currentAlt * 2.5;
-    doc["rssi"]     = currentRssi;
-    doc["lat"]      = currentLat;
-    doc["lon"]      = currentLon;
-
-    // Sérialisation du JSON dans une chaîne
-    String jsonString;
-    serializeJson(doc, jsonString);
-
-    // --- ENVOI VIA BLUETOOTH ---
-    pCharacteristic->setValue(jsonString.c_str());
-    pCharacteristic->notify(); 
-    
-    Serial.print("Télémétrie envoyée : ");
-    Serial.println(jsonString);
-
-    // Fréquence d'envoi : 500ms (2 Hz)
-    delay(500); 
-  }
-
-  // --- GESTION DES DÉCONNEXIONS ---
-  // Si on vient de perdre la connexion, on relance l'Advertising pour permettre une reconnexion
-  if (!deviceConnected && oldDeviceConnected) {
-      delay(500); // Laisse le temps à la pile Bluetooth de se nettoyer
-      pServer->startAdvertising();
-      Serial.println("Redémarrage de l'Advertising...");
-      oldDeviceConnected = deviceConnected;
-  }
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
-  // Si on vient de se connecter, on met à jour l'état
-  if (deviceConnected && !oldDeviceConnected) {
-      oldDeviceConnected = deviceConnected;
-  }
-}
+  <script>
+    const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+    const CHARACT_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+
+    let connectedRX = []; 
+    let drones = {}; 
+    
+    let userMarker = null;
+    let myLat = null, myLon = null;
+    let autoCenter = true; 
+    let centerThrottleTimeout = null; // Variable pour éviter le "Map Jittering"
+
+    const map = L.map('map', { center: [48.8566, 2.3522], zoom: 15, zoomControl: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM', maxZoom: 19 }).addTo(map);
+    L.control.zoom({ position: 'topleft' }).addTo(map);
+    
+    map.on('dragstart', () => { autoCenter = false; });
+
+    const droneIcon = L.divIcon({ className: '', html: '<div class="drone-marker"><div class="drone-dot"></div></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
+    const userIcon = L.divIcon({ className: '', html: '<div class="user-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+
+    // -----------------------------------------
+    // 🛡️ SÉCURITÉ : Nettoyage des IDs
+    // -----------------------------------------
+    // Remplace tout ce qui n'est pas alphanumérique (ou - / _) par un underscore.
+    // Empêche l'injection de balises <script> si le drone envoie des données corrompues.
+    function sanitizeId(rawId) {
+      if (!rawId) return "Inconnu";
+      return String(rawId).replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
+    // -----------------------------------------
+    // 📍 GESTION DU PILOTE (HOME)
+    // -----------------------------------------
+    function startGeolocation() {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.watchPosition(pos => {
+        myLat = pos.coords.latitude;
+        myLon = pos.coords.longitude;
+        
+        if (!userMarker) {
+          userMarker = L.marker([myLat, myLon], { icon: userIcon }).bindTooltip('📍 Moi', { direction: 'top' }).addTo(map);
+          map.setView([myLat, myLon], 15); 
+        } else {
+          userMarker.setLatLng([myLat, myLon]);
+        }
+        
+        updateGlobalStatus();
+        Object.keys(drones).forEach(id => updateLinkLine(id));
+      }, () => {}, { enableHighAccuracy: true, maximumAge: 2000 });
+    }
+
+    function updateGlobalStatus() {
+      const rxCount = connectedRX.length;
+      let gpsTxt = myLat ? `GPS: ${myLat.toFixed(5)}, ${myLon.toFixed(5)}` : "RECHERCHE GPS...";
+      document.getElementById('global-status').textContent = `PILOTE | ${gpsTxt} | RX CONNECTÉS: ${rxCount}`;
+    }
+
+    // -----------------------------------------
+    // ✈️ GESTION MULTI-DRONES
+    // -----------------------------------------
+    function createNewDrone(id) {
+      const container = document.getElementById('drones-container');
+      if (Object.keys(drones).length === 0) container.innerHTML = '';
+
+      drones[id] = {
+        rxCount: 0,
+        lastLat: null,
+        lastLon: null,
+        marker: null,
+        polyline: null,
+        linkLine: null,
+        tracePath: [],
+        color: getRandomColor(),
+        lastSeen: Date.now() // Utilisé par le Watchdog pour détecter les pertes de connexion
+      };
+
+      const html = `
+        <div class="drone-panel" id="panel-${id}">
+          <div class="info-row title-row">
+            <span class="info-label accent" style="color:${drones[id].color}">✈️ ID: ${id}</span>
+            <span id="badge-${id}" class="state-badge">INIT</span>
+          </div>
+          <div class="info-row">
+            <span class="info-item" id="rssi-${id}">RSSI:--</span>
+            <span class="info-item accent" id="alt-${id}">Alt:-- m</span>
+            <span class="info-item" id="tr-${id}">Tr:0</span>
+            <span class="info-item yellow" id="dist-${id}">Dist:--</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Pos.</span>
+            <span class="info-item muted" id="pos-${id}">En attente...</span>
+          </div>
+        </div>
+      `;
+      container.insertAdjacentHTML('beforeend', html);
+    }
+
+    function getRandomColor() {
+      const colors = ['#00d4ff', '#ff6b35', '#00ff9d', '#ffd700', '#ff3b5c', '#b19cd9'];
+      const index = Object.keys(drones).length % colors.length;
+      return colors[index];
+    }
+
+    function updateLinkLine(id) {
+      const dr = drones[id];
+      if (myLat === null || dr.lastLat === null) return;
+      
+      const pts = [[myLat, myLon], [dr.lastLat, dr.lastLon]];
+      if (dr.linkLine) {
+        dr.linkLine.setLatLngs(pts);
+      } else {
+        dr.linkLine = L.polyline(pts, { color: '#ffd700', weight: 1, opacity: 0.4, dashArray: '4 8' }).addTo(map);
+      }
+    }
+
+    function updateMap(id, lat, lon) {
+      const dr = drones[id];
+      const latlng = [lat, lon];
+      
+      if (!dr.marker) {
+        dr.marker = L.marker(latlng, { icon: droneIcon })
+          .bindTooltip(`🎯 ${id}`, { permanent: true, direction: 'right', className: 'drone-label' })
+          .addTo(map);
+      } else {
+        dr.marker.setLatLng(latlng);
+      }
+      
+      dr.tracePath.push(latlng);
+      if (dr.polyline) {
+        dr.polyline.setLatLngs(dr.tracePath);
+      } else {
+        dr.polyline = L.polyline(dr.tracePath, { color: dr.color, weight: 2, opacity: 0.7 }).addTo(map);
+      }
+      
+      // Demande un recentrage de manière optimisée (Throttling)
+      requestCenterMap();
+      updateLinkLine(id);
+    }
+
+    // -----------------------------------------
+    // ⚙️ OPTIMISATION : Throttling du centrage (Anti-Jitter)
+    // -----------------------------------------
+    // Cette fonction garantit que "fitBounds" n'est appelé qu'une fois par seconde max,
+    // même si on reçoit 50 trames par seconde. Cela libère énormément le processeur.
+    function requestCenterMap() {
+      if (!autoCenter) return;
+      if (!centerThrottleTimeout) {
+        centerThrottleTimeout = setTimeout(() => {
+          executeCenterMap();
+          centerThrottleTimeout = null;
+        }, 1000); // Délai de 1000ms (1 seconde) entre chaque recalibrage de caméra
+      }
+    }
+
+    // Bouton manuel : on force l'exécution immédiate
+    function forceCenterMap() {
+      autoCenter = true;
+      executeCenterMap();
+    }
+
+    function executeCenterMap() {
+      let bounds = [];
+      if (myLat !== null) bounds.push([myLat, myLon]);
+      
+      Object.keys(drones).forEach(id => {
+        if (drones[id].lastLat !== null) {
+          bounds.push([drones[id].lastLat, drones[id].lastLon]);
+        }
+      });
+
+      if (bounds.length > 0) {
+        // L'animation est gardée, mais comme elle se déclenche au max 1x par seconde, 
+        // le rendu reste fluide et naturel.
+        map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
+      }
+    }
+
+    // -----------------------------------------
+    // 🐕 WATCHDOG : Détection des déconnexions (NOUVEAU)
+    // -----------------------------------------
+    // Tourne en tâche de fond toutes les 2 secondes
+    setInterval(() => {
+      const now = Date.now();
+      Object.keys(drones).forEach(id => {
+        const dr = drones[id];
+        // Si aucune trame n'a été reçue depuis plus de 4 secondes (4000ms)
+        if (now - dr.lastSeen > 4000) {
+          const badge = document.getElementById(`badge-${id}`);
+          if (badge && badge.textContent !== 'OFFLINE') {
+            badge.textContent = 'OFFLINE';
+            badge.className = 'state-badge OFFLINE'; // Déclenche la couleur rouge CSS
+          }
+        }
+      });
+    }, 2000);
+
+    // -----------------------------------------
+    // ⚙️ TRAITEMENT DES DONNÉES ENTRANTES
+    // -----------------------------------------
+    function handleData(json) {
+      try {
+        const d = JSON.parse(json);
+        
+        // 🔒 Utilisation de la fonction de nettoyage contre les XSS
+        const id = sanitizeId(d.drone_id || d.id);
+
+        if (!drones[id]) {
+          createNewDrone(id);
+        }
+
+        const dr = drones[id];
+        dr.rxCount++;
+        dr.lastSeen = Date.now(); // ⏱️ Reset du Watchdog pour ce drone
+        
+        const etat = (d.etat || '--').toUpperCase();
+        const alt  = Math.max(0, parseFloat(d.alt  || 0)).toFixed(0);
+        const dist = parseFloat(d.dist || 0);
+        const rssi = parseFloat(d.rssi || 0).toFixed(0);
+        const lat  = parseFloat(d.lat  || 0);
+        const lon  = parseFloat(d.lon  || 0);
+
+        const badge = document.getElementById(`badge-${id}`);
+        badge.textContent = etat;
+        badge.className   = 'state-badge ' + etat;
+
+        document.getElementById(`rssi-${id}`).textContent = `RSSI:${rssi}`;
+        document.getElementById(`alt-${id}`).textContent  = `Alt:${alt}m`;
+        document.getElementById(`dist-${id}`).textContent = dist < 1000 ? `${dist.toFixed(0)}m` : `${(dist / 1000).toFixed(2)}km`;
+        document.getElementById(`tr-${id}`).textContent   = `Tr:${dr.rxCount}`;
+
+        if (lat !== 0 && lon !== 0) {
+          dr.lastLat = lat;
+          dr.lastLon = lon;
+          document.getElementById(`pos-${id}`).textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+          updateMap(id, lat, lon);
+        }
+
+      } catch(e) {
+        console.error("Erreur Parsing JSON:", e);
+      }
+    }
+
+    // -----------------------------------------
+    // 📡 BLUETOOTH (MULTI-CONNEXIONS)
+    // -----------------------------------------
+    async function connectBLE() {
+      if (!navigator.bluetooth) {
+        alert('Web Bluetooth non supporté !'); return;
+      }
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: 'DLXR_RX' }], 
+          optionalServices: [SERVICE_UUID]
+        });
+        
+        device.addEventListener('gattserverdisconnected', () => {
+          connectedRX = connectedRX.filter(d => d.id !== device.id);
+          updateGlobalStatus();
+          // Le watchdog gèrera automatiquement le passage en OFFLINE des drones 
+          // associés à ce RX car ils arrêteront d'émettre des trames.
+        });
+
+        const server  = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        const charact = await service.getCharacteristic(CHARACT_UUID);
+        
+        await charact.startNotifications();
+        charact.addEventListener('characteristicvaluechanged', e => {
+          handleData(new TextDecoder().decode(e.target.value));
+        });
+
+        connectedRX.push(device);
+        
+        const btn = document.getElementById('ble-btn');
+        btn.textContent = `+ AJOUTER RX (${connectedRX.length})`;
+        btn.classList.add('connected');
+        
+        updateGlobalStatus();
+        
+      } catch(e) {
+        console.error('Erreur BLE:', e);
+      }
+    }
+
+    startGeolocation();
+  </script>
+</body>
+</html>
