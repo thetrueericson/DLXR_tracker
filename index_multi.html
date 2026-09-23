@@ -3,14 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>DLXR Tracker V6.6 - MULTI SATELLITE & TWR</title>
+  <title>DLXR Tracker V6.7 - MÉTÉO AVANCÉE & CONFIG</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet" />
-  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
 
   <style>
+    /* ========================================== */
+    /* VARIABLES CSS & THÈME GLOBALS              */
+    /* ========================================== */
     :root {
       --bg:        #0a0e1a;
       --panel:     #0f1628;
@@ -22,12 +24,12 @@
       --red:       #ff3b5c;
       --text:      #e0eeff;
       --muted:     #4a6080;
+      --weather-color: #00ff9d; /* Variable dynamique modifiée par JS selon les rafales */
       --mono:      'Share Tech Mono', monospace;
       --sans:      'Exo 2', sans-serif;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body { background: var(--bg); color: var(--text); font-family: var(--sans); height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
     
     header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); z-index: 1000; flex-shrink: 0; }
@@ -35,58 +37,69 @@
     .logo span { color: var(--accent2); }
 
     #ble-btn { background: transparent; border: 1.5px solid var(--accent); color: var(--accent); font-family: var(--mono); font-size: 0.75rem; padding: 6px 14px; border-radius: 4px; cursor: pointer; letter-spacing: 1px; transition: all 0.2s; }
-    #ble-btn:hover { background: var(--accent); color: var(--bg); }
     #ble-btn.connected { border-color: var(--green); color: var(--green); }
 
     #map { flex: 1; width: 100%; z-index: 1; position: relative; }
-
-    /* SATELLITE & WIDGET UI */
     .leaflet-tile { filter: brightness(1.1) saturate(1.2); }
     .leaflet-container { background: #0a0e1a; }
 
-    #wind-widget { position: absolute; top: 10px; right: 16px; z-index: 999; background: rgba(15, 22, 40, 0.85); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(4px); }
-    .wind-arrow { width: 18px; height: 18px; transition: transform 0.5s ease; }
-    .wind-data { display: flex; flex-direction: column; }
+    /* ========================================== */
+    /* WIDGET MÉTÉO (Haut Droit)                  */
+    /* ========================================== */
+    #wind-widget { 
+      position: absolute; top: 10px; right: 16px; z-index: 999; 
+      background: rgba(15, 22, 40, 0.85); border: 2px solid var(--weather-color); /* Bordure dynamique */
+      border-radius: 6px; padding: 8px 12px; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(4px); transition: border-color 0.3s;
+    }
+    .wind-arrow { width: 22px; height: 22px; transition: transform 0.5s ease; }
+    .wind-data { display: flex; flex-direction: column; gap: 2px; }
     .wind-text { font-family: var(--mono); font-size: 0.7rem; color: #fff; }
     .crosswind { color: var(--red); font-weight: bold; }
+    .warning { color: var(--yellow); }
 
-    /* LABELS DE PISTES */
-    .runway-label {
-      background: rgba(30, 45, 74, 0.85); color: white; border: 1px solid #4a90ff; border-radius: 4px; padding: 2px 6px;
-      font-family: var(--mono); font-size: 0.7rem; font-weight: bold; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    /* ========================================== */
+    /* CONTRÔLES MÉTÉO (Curseurs Temps)           */
+    /* ========================================== */
+    #time-controls {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      z-index: 999; background: rgba(15, 22, 40, 0.9); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 15px; width: 300px; display: flex; flex-direction: column; gap: 8px; backdrop-filter: blur(4px);
     }
+    .slider-row { display: flex; flex-direction: column; gap: 4px; }
+    .slider-row label { font-size: 0.75rem; font-weight: 600; display: flex; justify-content: space-between; }
+    .slider-row span { font-family: var(--mono); color: var(--weather-color); transition: color 0.3s; }
+    
+    /* Style personnalisé des curseurs pour refléter la couleur de la météo */
+    input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--weather-color); cursor: pointer; margin-top: -6px; transition: background 0.3s; }
+    input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: var(--border); border-radius: 2px; }
+
+    /* ========================================== */
+    /* ÉLÉMENTS CARTOGRAPHIQUES                   */
+    /* ========================================== */
+    .runway-label { background: rgba(30, 45, 74, 0.85); color: white; border: 1px solid #4a90ff; border-radius: 4px; padding: 2px 6px; font-family: var(--mono); font-size: 0.7rem; font-weight: bold; text-align: center; }
     .runway-label.secondary { background: rgba(42, 42, 42, 0.85); border-color: #666; color: #ccc; }
-
-    /* VECTEUR VENT SVG (Sur Carte) */
-    .onmap-wind-container {
-      position: absolute; width: 120px; height: 120px;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-    }
-
-    /* SOLEIL */
     .sun-marker { width: 14px; height: 14px; background: #ffb700; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 10px #ffb700; }
+    
+    .onmap-wind-container { position: absolute; width: 160px; height: 160px; transform: translate(-50%, -50%); pointer-events: none; }
 
-    /* PANNEAUX DRONES */
-    #drones-container { background: var(--bg); border-top: 1px solid var(--border); max-height: 40vh; overflow-y: auto; z-index: 1000; display: flex; flex-direction: column; gap: 5px; padding: 5px; }
+    /* PANNEAUX DRONES ET BOUTONS */
+    #drones-container { background: var(--bg); border-top: 1px solid var(--border); max-height: 35vh; overflow-y: auto; z-index: 1000; display: flex; flex-direction: column; gap: 5px; padding: 5px; }
     .drone-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; }
     .info-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--bg); }
     .info-row:last-of-type { border-bottom: none; }
     .title-row { border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 4px; }
     .info-label { font-size: 0.85rem; font-weight: 600; flex-shrink: 0; }
     .info-item { font-family: var(--mono); font-size: 0.75rem; color: var(--text); white-space: nowrap; }
-    .info-item.accent { color: var(--accent); } .info-item.muted { color: var(--muted); } .info-item.yellow { color: var(--yellow); }
-
-    .state-badge { font-family: var(--mono); font-size: 0.65rem; font-weight: 600; padding: 2px 8px; border-radius: 3px; letter-spacing: 1px; background: var(--muted); color: var(--bg); transition: background 0.3s; }
-    .state-badge.BOOT { background: var(--yellow); } .state-badge.LOW { background: var(--accent); } .state-badge.HIGH { background: var(--green); } .state-badge.GROUND { background: var(--accent2); } .state-badge.OFFLINE { background: var(--red); color: white; }
-
+    .state-badge { font-family: var(--mono); font-size: 0.65rem; font-weight: 600; padding: 2px 8px; border-radius: 3px; background: var(--muted); color: var(--bg); }
+    .state-badge.HIGH { background: var(--green); } .state-badge.GROUND { background: var(--accent2); } .state-badge.OFFLINE { background: var(--red); color: white; }
     #global-status { background: var(--panel); font-family: var(--mono); font-size: 0.65rem; color: var(--muted); text-align: center; padding: 4px; border-top: 1px solid var(--border); }
-
+    
     .drone-marker { width: 16px; height: 16px; position: relative; }
     .drone-marker::before, .drone-marker::after { content: ''; position: absolute; background: #00d4ff; }
     .drone-marker::before { width: 16px; height: 2px; top: 7px; left: 0; } .drone-marker::after { width: 2px; height: 16px; top: 0; left: 7px; }
     .drone-dot { position: absolute; width: 4px; height: 4px; background: #ff6b35; border-radius: 50%; top: 6px; left: 6px; }
-
+    
     .user-marker { width: 14px; height: 14px; background: #4a90ff; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 8px rgba(74,144,255,0.8); animation: userpulse 2s infinite; }
     @keyframes userpulse { 0% { box-shadow: 0 0 4px rgba(74,144,255,0.8); } 50% { box-shadow: 0 0 14px rgba(74,144,255,1); } 100% { box-shadow: 0 0 4px rgba(74,144,255,0.8); } }
 
@@ -97,216 +110,312 @@
 <body>
 
   <header>
-    <div class="logo">DL<span>X</span>R V6.6 <span>TWR</span></div>
+    <div class="logo">DL<span>X</span>R V6.7 <span>METEO</span></div>
     <button id="ble-btn" onclick="connectBLE()">⚡ AJOUTER RX</button>
   </header>
 
   <div id="map">
+    <!-- WIDGET MÉTÉO DÉTAILLÉ -->
     <div id="wind-widget">
       <svg class="wind-arrow" id="wind-arrow-ui" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="2" x2="12" y2="22"></line>
         <polyline points="5 9 12 2 19 9"></polyline>
       </svg>
       <div class="wind-data">
-        <span class="wind-text" id="wind-speed">Vent: -- km/h</span>
-        <span class="wind-text crosswind" id="wind-cross">Travers: -- km/h</span>
+        <span class="wind-text" id="ui-wind">Vent: -- km/h</span>
+        <span class="wind-text warning" id="ui-gusts">Rafales: -- km/h</span>
+        <span class="wind-text crosswind" id="ui-cross">Travers: -- km/h</span>
+        <span class="wind-text" id="ui-precip">Pluie: -- mm</span>
+      </div>
+    </div>
+
+    <!-- CONTRÔLES TEMPORELS (CURSEURS) -->
+    <div id="time-controls">
+      <div class="slider-row">
+        <label>Date <span id="label-date">--/--/----</span></label>
+        <!-- max sera défini dynamiquement par JS selon les données API -->
+        <input type="range" id="slider-date" min="0" max="14" step="1" value="7">
+      </div>
+      <div class="slider-row">
+        <label>Heure <span id="label-time">--:00</span></label>
+        <input type="range" id="slider-time" min="0" max="23" step="1" value="12">
       </div>
     </div>
   </div>
   
   <div class="map-controls-wrapper">
-    <button id="center-btn" onclick="forceCenterMap()" title="Recadrer sur tous les éléments">🎯</button>
+    <button id="center-btn" onclick="forceCenterMap()" title="Recadrer">🎯</button>
   </div>
 
   <div id="global-status">PILOTE: RECHERCHE GPS... | RX CONNECTÉS: 0</div>
-  
-  <div id="drones-container">
-    <div style="padding: 15px; text-align: center; color: var(--muted); font-size: 0.8rem;">
-      Aucun drone détecté pour le moment.
-    </div>
-  </div>
+  <div id="drones-container"><div style="padding: 15px; text-align: center; color: var(--muted); font-size: 0.8rem;">Aucun drone détecté.</div></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
   <script>
+    // ==========================================
+    // 1. BLOC DE CONFIGURATION CENTRALISÉ
+    // ==========================================
+    const CONFIG = {
+      // Point d'origine pour le dessin du soleil et du vecteur vent (Le point jaune)
+      origin: { lat: 47.854408, lon: 3.434616 },
+      
+      // Piste 1 (Principale 05/23)
+      runway1: { 
+        lat1: 47.852400, lon1: 3.432500, // Début (Seuil 05)
+        lat2: 47.854830, lon2: 3.435550, // Fin (Seuil 23)
+        width: 16,                       // Largeur en mètres
+        heading: 51                      // QFU magnétique exact
+      },
+      
+      // Piste 2 (Secondaire 14/32)
+      runway2: { 
+        lat1: 47.854841, lon1: 3.434967, // Début (Seuil 14)
+        lat2: 47.854277, lon2: 3.434944, // Fin (Seuil 32)
+        width: 11.8                      // Largeur en mètres
+      },
+
+      // Seuils d'alerte météo (en km/h) pour les rafales
+      weatherThresholds: {
+        safe: 15,    // En dessous = Vert (Idéal)
+        warning: 35  // Au-dessus = Rouge (Danger), Entre les deux = Jaune
+      }
+    };
+
+    // ==========================================
+    // 2. VARIABLES GLOBALES (BLE & Météo)
+    // ==========================================
     const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
     const CHARACT_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
-
+    
     let connectedRX = [], drones = {}; 
     let userMarker = null, myLat = null, myLon = null;
     let autoCenter = true, centerThrottleTimeout = null;
+    
+    // Structure pour stocker l'historique et les prévisions Open-Meteo
+    let weatherData = null;
 
-    // -----------------------------------------
-    // FONCTION MATHÉMATIQUE : POLYS PARFAITS
-    // -----------------------------------------
-    // Génère un polygone rectangulaire parfait à partir de l'axe central et de la largeur
+    // ==========================================
+    // 3. FONCTIONS UTILITAIRES GEOSPATIALES
+    // ==========================================
     function getRunwayPoly(lat1, lon1, lat2, lon2, widthMeters) {
-      const R = 6378137; // Rayon Terre
+      const R = 6378137;
       const dLat = (lat2 - lat1) * Math.PI / 180;
       const dLon = (lon2 - lon1) * Math.PI / 180 * Math.cos((lat1 + lat2) / 2 * Math.PI / 180);
-      const heading = Math.atan2(dLon, dLat); // Orientation de la piste
-      
+      const heading = Math.atan2(dLon, dLat);
       const w = widthMeters / 2;
-      // Décalage perpendiculaire (Gauche/Droite)
       const dx = (w * Math.cos(heading)) / (R * Math.cos((lat1 + lat2) / 2 * Math.PI / 180)) * 180 / Math.PI;
       const dy = (w * -Math.sin(heading)) / R * 180 / Math.PI;
-
-      return [
-        [lat1 + dy, lon1 + dx], // Seuil 1 - Droite
-        [lat1 - dy, lon1 - dx], // Seuil 1 - Gauche
-        [lat2 - dy, lon2 - dx], // Seuil 2 - Gauche
-        [lat2 + dy, lon2 + dx]  // Seuil 2 - Droite
-      ];
+      return [ [lat1 + dy, lon1 + dx], [lat1 - dy, lon1 - dx], [lat2 - dy, lon2 - dx], [lat2 + dy, lon2 + dx] ];
     }
 
-    // -----------------------------------------
-    // INITIALISATION CARTE
-    // -----------------------------------------
-    // Centre Météo / Vent (Ton point précis)
-    const windOriginLat = 47.854408;
-    const windOriginLon = 3.434616;
-    
-    const map = L.map('map', { center: [windOriginLat, windOriginLon], zoom: 18, zoomControl: false });
-    
+    // ==========================================
+    // 4. INITIALISATION CARTE LEAFLET
+    // ==========================================
+    const map = L.map('map', { center: [CONFIG.origin.lat, CONFIG.origin.lon], zoom: 18, zoomControl: false });
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri', maxZoom: 20 }).addTo(map);
     L.control.zoom({ position: 'topleft' }).addTo(map);
     map.on('dragstart', () => { autoCenter = false; });
 
-    // -----------------------------------------
-    // DESSIN DES PISTES (Bord blanc, Fond Noir 75%, Pointillés)
-    // -----------------------------------------
-    
-    // --- PISTE PRINCIPALE (05/23) ---
-    // Axe central ajusté pour que le coin NE tombe sur 47.854746, 3.435714 avec ~16m de large
-    const mainLat1 = 47.852400, mainLon1 = 3.432500; // Seuil 05
-    const mainLat2 = 47.854830, mainLon2 = 3.435550; // Seuil 23
-    
-    const mainRunwayCorners = getRunwayPoly(mainLat1, mainLon1, mainLat2, mainLon2, 16);
-    const mainRunwayCenter = [ [mainLat1, mainLon1], [mainLat2, mainLon2] ];
-    
-    L.polygon(mainRunwayCorners, { color: '#ffffff', weight: 1.5, fillColor: '#000000', fillOpacity: 0.75 }).addTo(map);
-    L.polyline(mainRunwayCenter, { color: '#ffffff', weight: 2, dashArray: '6 8', opacity: 0.8 }).addTo(map);
-    
-    L.marker([mainLat1, mainLon1], { icon: L.divIcon({ className: '', html: '<div class="runway-label">05</div>', iconSize: [24, 16], iconAnchor: [12, 8] }) }).addTo(map);
-    L.marker([mainLat2, mainLon2], { icon: L.divIcon({ className: '', html: '<div class="runway-label">23</div>', iconSize: [24, 16], iconAnchor: [12, 8] }) }).addTo(map);
+    // --- Dessin Piste 1 ---
+    const r1Corners = getRunwayPoly(CONFIG.runway1.lat1, CONFIG.runway1.lon1, CONFIG.runway1.lat2, CONFIG.runway1.lon2, CONFIG.runway1.width);
+    L.polygon(r1Corners, { color: '#ffffff', weight: 1.5, fillColor: '#000000', fillOpacity: 0.75 }).addTo(map);
+    L.polyline([ [CONFIG.runway1.lat1, CONFIG.runway1.lon1], [CONFIG.runway1.lat2, CONFIG.runway1.lon2] ], { color: '#ffffff', weight: 2, dashArray: '6 8', opacity: 0.8 }).addTo(map);
+    L.marker([CONFIG.runway1.lat1, CONFIG.runway1.lon1], { icon: L.divIcon({ className: '', html: '<div class="runway-label">05</div>', iconSize: [24, 16], iconAnchor: [12, 8] }) }).addTo(map);
+    L.marker([CONFIG.runway1.lat2, CONFIG.runway1.lon2], { icon: L.divIcon({ className: '', html: '<div class="runway-label">23</div>', iconSize: [24, 16], iconAnchor: [12, 8] }) }).addTo(map);
 
-    // --- PISTE SECONDAIRE (14/32) ---
-    // Coordonnées exactes fournies par l'utilisateur
-    const secLat1 = 47.854841, secLon1 = 3.434967; // Seuil 14
-    const secLat2 = 47.854277, secLon2 = 3.434944; // Seuil 32 (Conversion de 47°51'15.4"N 3°26'05.8"E)
-    
-    const secRunwayCorners = getRunwayPoly(secLat1, secLon1, secLat2, secLon2, 11.8);
-    const secRunwayCenter = [ [secLat1, secLon1], [secLat2, secLon2] ];
+    // --- Dessin Piste 2 ---
+    const r2Corners = getRunwayPoly(CONFIG.runway2.lat1, CONFIG.runway2.lon1, CONFIG.runway2.lat2, CONFIG.runway2.lon2, CONFIG.runway2.width);
+    L.polygon(r2Corners, { color: '#ffffff', weight: 1.5, fillColor: '#000000', fillOpacity: 0.75 }).addTo(map);
+    L.polyline([ [CONFIG.runway2.lat1, CONFIG.runway2.lon1], [CONFIG.runway2.lat2, CONFIG.runway2.lon2] ], { color: '#ffffff', weight: 2, dashArray: '6 8', opacity: 0.8 }).addTo(map);
+    L.marker([CONFIG.runway2.lat1, CONFIG.runway2.lon1], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">14</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
+    L.marker([CONFIG.runway2.lat2, CONFIG.runway2.lon2], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">32</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
 
-    L.polygon(secRunwayCorners, { color: '#ffffff', weight: 1.5, fillColor: '#000000', fillOpacity: 0.75 }).addTo(map);
-    L.polyline(secRunwayCenter, { color: '#ffffff', weight: 2, dashArray: '6 8', opacity: 0.8 }).addTo(map);
-    
-    L.marker([secLat1, secLon1], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">14</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
-    L.marker([secLat2, secLon2], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">32</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
-
-    // -----------------------------------------
-    // VECTEUR VENT SVG (Origine sur point fourni)
-    // -----------------------------------------
-    const RUNWAY_HEADING = 51; // QFU affiné 05
-    
+    // ==========================================
+    // 5. VECTEUR VENT SVG SUR LA CARTE
+    // ==========================================
     const onMapWindIcon = L.divIcon({
       className: '',
       html: `
         <div class="onmap-wind-container">
-          <svg viewBox="-60 -60 120 120" style="width: 120px; height: 120px; overflow: visible;">
-            <!-- Composante Traversière (Rouge) -->
-            <g id="svg-crosswind-group" style="transition: transform 0.5s ease;">
-              <line id="svg-crosswind-line" x1="0" y1="0" x2="0" y2="0" stroke="#ff3b5c" stroke-width="4" stroke-linecap="round" />
+          <!-- ViewBox 160x160. Origine à 0,0 au centre -->
+          <svg viewBox="-80 -80 160 160" style="width: 160px; height: 160px; overflow: visible;">
+            <!-- Groupe Traversier (Rouge) -->
+            <g id="svg-crosswind-group" style="transition: transform 0.3s ease;">
+              <line id="svg-crosswind-line" x1="0" y1="0" x2="0" y2="0" stroke="#ff3b5c" stroke-width="4.5" stroke-linecap="round" />
             </g>
-            <!-- Vecteur Vent Global (Bleu) -->
-            <g id="svg-wind-group" style="transition: transform 0.5s ease;">
-              <line x1="0" y1="0" x2="0" y2="-45" stroke="#00d4ff" stroke-width="3" stroke-linecap="round" />
-              <polygon points="-6,-35 6,-35 0,-48" fill="#00d4ff" />
+            <!-- Groupe Vent Global (Bleu) -->
+            <g id="svg-wind-group" style="transition: transform 0.3s ease;">
+              <line x1="0" y1="0" x2="0" y2="-60" stroke="#00d4ff" stroke-width="3" stroke-linecap="round" />
+              <polygon points="-7,-50 7,-50 0,-65" fill="#00d4ff" />
             </g>
-            <!-- Point d'origine -->
-            <circle cx="0" cy="0" r="4.5" fill="#ffd700" stroke="white" stroke-width="1.5" />
+            <!-- Point d'origine central -->
+            <circle cx="0" cy="0" r="5" fill="#ffd700" stroke="white" stroke-width="1.5" />
           </svg>
         </div>
       `,
-      iconSize: [120, 120], iconAnchor: [60, 60]
+      iconSize: [160, 160], iconAnchor: [80, 80]
     });
-    
-    L.marker([windOriginLat, windOriginLon], { icon: onMapWindIcon, interactive: false }).addTo(map);
+    L.marker([CONFIG.origin.lat, CONFIG.origin.lon], { icon: onMapWindIcon, interactive: false }).addTo(map);
 
-    async function updateWind() {
-      try {
-        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${windOriginLat}&longitude=${windOriginLon}&current_weather=true`);
-        const data = await res.json();
-        const windSpeed = data.current_weather.windspeed;
-        const windDir = data.current_weather.winddirection;
-
-        const angleRad = (windDir - RUNWAY_HEADING) * (Math.PI / 180);
-        const crosswind = Math.abs(Math.sin(angleRad) * windSpeed);
-
-        document.getElementById('wind-speed').textContent = `Vent: ${windSpeed.toFixed(1)} km/h`;
-        document.getElementById('wind-cross').textContent = `Travers: ${crosswind.toFixed(1)} km/h`;
-        document.getElementById('wind-arrow-ui').style.transform = `rotate(${windDir + 180}deg)`;
-        
-        const svgWindGroup = document.getElementById('svg-wind-group');
-        const svgCrossGroup = document.getElementById('svg-crosswind-group');
-        const svgCrossLine = document.getElementById('svg-crosswind-line');
-        
-        if (svgWindGroup && svgCrossGroup) {
-          svgWindGroup.style.transform = `rotate(${windDir + 180}deg)`;
-          
-          // Orientation du traversier
-          const crossDir = Math.sin(angleRad) > 0 ? (RUNWAY_HEADING - 90) : (RUNWAY_HEADING + 90);
-          svgCrossGroup.style.transform = `rotate(${crossDir}deg)`;
-          
-          // Tracer la ligne rouge vers l'avant du groupe tourné (axe Y négatif)
-          const barLength = Math.max(0, crosswind * 1.5); 
-          svgCrossLine.setAttribute('y2', -barLength);
-        }
-      } catch (error) { console.error("Erreur météo:", error); }
-    }
-
-    // -----------------------------------------
-    // SOLEIL (Trajectoire et position)
-    // -----------------------------------------
+    // ==========================================
+    // 6. GESTION DES PRÉVISIONS ET CURSEURS MÉTÉO
+    // ==========================================
+    const sliderDate = document.getElementById('slider-date');
+    const sliderTime = document.getElementById('slider-time');
     let sunPathPolyline = null, sunMarker = null;
 
-    function updateSun() {
-      const now = new Date();
-      const times = SunCalc.getTimes(now, windOriginLat, windOriginLon);
-      const sunPos = SunCalc.getPosition(now, windOriginLat, windOriginLon);
-      const sunAzimuth = (sunPos.azimuth * 180 / Math.PI + 180) % 360;
-      
-      if (sunPos.altitude < 0) return;
+    /**
+     * Charge les données météo depuis Open-Meteo pour 7 jours passés et 7 jours futurs
+     */
+    async function loadWeatherData() {
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.origin.lat}&longitude=${CONFIG.origin.lon}&hourly=windspeed_10m,winddirection_10m,windgusts_10m,precipitation&past_days=7&forecast_days=7&timezone=auto`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        // Stocke les données au format horaire
+        weatherData = data.hourly;
+        
+        // Configuration initiale des curseurs pour cibler l'heure actuelle
+        const now = new Date();
+        // Trouve l'index de l'heure la plus proche dans le tableau retourné par l'API
+        let closestIndex = 0;
+        let minDiff = Infinity;
+        
+        for (let i = 0; i < weatherData.time.length; i++) {
+          const t = new Date(weatherData.time[i]);
+          const diff = Math.abs(t - now);
+          if (diff < minDiff) { minDiff = diff; closestIndex = i; }
+        }
 
-      const arcPoints = [];
+        // Le nombre total de jours est la taille du tableau divisé par 24
+        const totalDays = Math.floor(weatherData.time.length / 24);
+        sliderDate.max = totalDays - 1;
+        
+        // Assigne la position des curseurs
+        sliderDate.value = Math.floor(closestIndex / 24);
+        sliderTime.value = closestIndex % 24;
+
+        // Met à jour l'affichage avec ces valeurs
+        applyWeatherData();
+
+        // Ajoute les écouteurs d'événements pour le glissement des curseurs
+        sliderDate.addEventListener('input', applyWeatherData);
+        sliderTime.addEventListener('input', applyWeatherData);
+
+      } catch (e) {
+        console.error("Impossible de charger l'API Météo", e);
+      }
+    }
+
+    /**
+     * Applique les données météo à l'UI et aux vecteurs selon l'index sélectionné par les curseurs
+     */
+    function applyWeatherData() {
+      if (!weatherData) return;
+
+      const dayIdx = parseInt(sliderDate.value);
+      const hourIdx = parseInt(sliderTime.value);
+      const dataIndex = (dayIdx * 24) + hourIdx;
+
+      // Récupération des données pour l'heure précise
+      const targetDate = new Date(weatherData.time[dataIndex]);
+      const windSpeed = weatherData.windspeed_10m[dataIndex] || 0;
+      const windDir = weatherData.winddirection_10m[dataIndex] || 0;
+      const windGusts = weatherData.windgusts_10m[dataIndex] || 0;
+      const precip = weatherData.precipitation[dataIndex] || 0;
+
+      // Formatage des labels de curseur
+      document.getElementById('label-date').textContent = targetDate.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+      document.getElementById('label-time').textContent = targetDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+      // Mise à jour de la couleur d'alerte globale
+      let alertColor = 'var(--yellow)';
+      if (windGusts > CONFIG.weatherThresholds.warning) alertColor = 'var(--red)';
+      else if (windGusts <= CONFIG.weatherThresholds.safe) alertColor = 'var(--green)';
+      
+      // Injecte la couleur dans CSS pour colorer la bordure et les curseurs
+      document.documentElement.style.setProperty('--weather-color', alertColor);
+
+      // Calcul de la composante traversière (Axe piste 05/23 = CONFIG.runway1.heading)
+      const angleRad = (windDir - CONFIG.runway1.heading) * (Math.PI / 180);
+      const crosswind = Math.sin(angleRad) * windSpeed;
+      const absCrosswind = Math.abs(crosswind);
+
+      // Mise à jour des textes du widget
+      document.getElementById('ui-wind').textContent = `Vent: ${windSpeed.toFixed(1)} km/h`;
+      document.getElementById('ui-gusts').textContent = `Rafales: ${windGusts.toFixed(1)} km/h`;
+      document.getElementById('ui-cross').textContent = `Travers: ${absCrosswind.toFixed(1)} km/h`;
+      document.getElementById('ui-precip').textContent = `Pluie: ${precip.toFixed(1)} mm`;
+      document.getElementById('wind-arrow-ui').style.transform = `rotate(${windDir + 180}deg)`;
+
+      // Mise à jour du SVG sur la carte
+      const svgWindGroup = document.getElementById('svg-wind-group');
+      const svgCrossGroup = document.getElementById('svg-crosswind-group');
+      const svgCrossLine = document.getElementById('svg-crosswind-line');
+      
+      if (svgWindGroup && svgCrossGroup) {
+        // La flèche bleue pointe vers la destination du vent
+        svgWindGroup.style.transform = `rotate(${windDir + 180}deg)`;
+        
+        // Le traversier est perpendiculaire à l'axe de la piste (QFU +/- 90°)
+        // Si crosswind est positif, le vent vient de la droite de la piste, donc on trace vers la gauche
+        const crossDir = crosswind > 0 ? (CONFIG.runway1.heading - 90) : (CONFIG.runway1.heading + 90);
+        svgCrossGroup.style.transform = `rotate(${crossDir}deg)`;
+        
+        // Longueur de la barre rouge (multiplicateur visuel x2 pour être bien visible sur la map)
+        const barLength = Math.max(0, absCrosswind * 2); 
+        // On dessine la ligne vers le haut (Y négatif) dans le groupe qui a été tourné
+        svgCrossLine.setAttribute('y2', -barLength);
+      }
+
+      // Mise à jour de la position du soleil pour la date et l'heure sélectionnées
+      updateSunPosition(targetDate);
+    }
+
+    /**
+     * Calcule et dessine la course du soleil pour une date donnée
+     */
+    function updateSunPosition(targetDate) {
+      const times = SunCalc.getTimes(targetDate, CONFIG.origin.lat, CONFIG.origin.lon);
+      const sunPos = SunCalc.getPosition(targetDate, CONFIG.origin.lat, CONFIG.origin.lon);
+      const sunAzimuth = (sunPos.azimuth * 180 / Math.PI + 180) % 360;
       const radius = 0.0018; 
       
+      // Dessin de l'arc (seulement si non existant ou si la date (jour) a changé, pour économiser des perfs)
+      const arcPoints = [];
       for (let i = 0; i <= 100; i++) {
         const t = new Date(times.sunrise.getTime() + (times.sunset.getTime() - times.sunrise.getTime()) * (i / 100));
-        const pos = SunCalc.getPosition(t, windOriginLat, windOriginLon);
+        const pos = SunCalc.getPosition(t, CONFIG.origin.lat, CONFIG.origin.lon);
         const az = (pos.azimuth * 180 / Math.PI + 180) % 360;
-        const lat = windOriginLat + Math.cos(az * Math.PI / 180) * radius;
-        const lon = windOriginLon + Math.sin(az * Math.PI / 180) * (radius / Math.cos(windOriginLat * Math.PI / 180));
+        const lat = CONFIG.origin.lat + Math.cos(az * Math.PI / 180) * radius;
+        const lon = CONFIG.origin.lon + Math.sin(az * Math.PI / 180) * (radius / Math.cos(CONFIG.origin.lat * Math.PI / 180));
         arcPoints.push([lat, lon]);
       }
 
       if (sunPathPolyline) map.removeLayer(sunPathPolyline);
       sunPathPolyline = L.polyline(arcPoints, { color: '#ffb700', weight: 2, dashArray: '4 8', opacity: 0.7 }).addTo(map);
 
-      const currentLat = windOriginLat + Math.cos(sunAzimuth * Math.PI / 180) * radius;
-      const currentLon = windOriginLon + Math.sin(sunAzimuth * Math.PI / 180) * (radius / Math.cos(windOriginLat * Math.PI / 180));
-      const sunIcon = L.divIcon({ className: '', html: '<div class="sun-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
-      
-      if (!sunMarker) sunMarker = L.marker([currentLat, currentLon], { icon: sunIcon, interactive: false }).addTo(map);
-      else sunMarker.setLatLng([currentLat, currentLon]);
+      // Placement de l'icône Soleil (Cachée si le soleil est sous l'horizon)
+      if (sunPos.altitude > 0) {
+        const currentLat = CONFIG.origin.lat + Math.cos(sunAzimuth * Math.PI / 180) * radius;
+        const currentLon = CONFIG.origin.lon + Math.sin(sunAzimuth * Math.PI / 180) * (radius / Math.cos(CONFIG.origin.lat * Math.PI / 180));
+        const sunIcon = L.divIcon({ className: '', html: '<div class="sun-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+        
+        if (!sunMarker) sunMarker = L.marker([currentLat, currentLon], { icon: sunIcon, interactive: false }).addTo(map);
+        else { sunMarker.setLatLng([currentLat, currentLon]); sunMarker.setOpacity(1); }
+      } else {
+        if (sunMarker) sunMarker.setOpacity(0); // Masque le marqueur la nuit
+      }
     }
 
-    updateWind(); updateSun();
-    setInterval(updateWind, 300000); setInterval(updateSun, 300000);
+    // Chargement initial des données météo
+    loadWeatherData();
 
-    // -----------------------------------------
-    // GESTION DRONES ET PILOTE
-    // -----------------------------------------
+    // ==========================================
+    // 7. GESTION DES DRONES ET DU PILOTE
+    // ==========================================
     const droneIcon = L.divIcon({ className: '', html: '<div class="drone-marker"><div class="drone-dot"></div></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
     const userIcon = L.divIcon({ className: '', html: '<div class="user-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
 
@@ -376,6 +485,7 @@
         }, 1000);
       }
     }
+    
     function forceCenterMap() { autoCenter = true; requestCenterMap(); }
 
     setInterval(() => {
