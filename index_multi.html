@@ -618,11 +618,17 @@ L.circleMarker([CONFIG.origin.lat, CONFIG.origin.lon], {radius: 5, color: 'white
         document.getElementById(`dist-${id}`).textContent = dist < 1000 ? `${dist.toFixed(0)}m` : `${(dist / 1000).toFixed(2)}km`;
         document.getElementById(`tr-${id}`).textContent = `Tr:${dr.rxCount}`;
 
-        if (lat !== 0 && lon !== 0) {
-          dr.lastLat = lat; dr.lastLon = lon;
-          document.getElementById(`pos-${id}`).textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-          updateMap(id, lat, lon);
-        }
+const sats = d.sats !== undefined ? d.sats : 0;
+
+    if (etat === 'BOOT' || (lat === 0 && lon === 0)) {
+      document.getElementById(`pos-${id}`).textContent = `Recherche GPS... (Sat: ${sats})`;
+      document.getElementById(`pos-${id}`).className = 'info-item yellow';
+    } else {
+      dr.lastLat = lat; dr.lastLon = lon;
+      document.getElementById(`pos-${id}`).textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)} (Sat: ${sats})`;
+      document.getElementById(`pos-${id}`).className = 'info-item muted';
+      updateMap(id, lat, lon);
+    }
       } catch(e) {}
     }
 
