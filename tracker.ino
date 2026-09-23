@@ -1,128 +1,88 @@
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+#include <RadioLib.h>
 #include <ArduinoJson.h>
+#include <TinyGPS++.h>
 
 // ---------------------------------------------------------
-// PARAMÈTRES DU MODULE (À modifier pour chaque ESP32)
+// 1. CÂBLAGE DE LA PUCE LORA (À VERIFIER SUR TON DIY)
 // ---------------------------------------------------------
-// Le nom DOIT commencer par "DLXR_RX" pour être vu par l'interface Web
-#define DEVICE_NAME "DLXR_RX_1" 
-#define DRONE_ID    "fil_blanc" // Identifiant unique du drone affiché sur l'UI
-
-// Les UUIDs doivent correspondre EXACTEMENT à ceux du code JavaScript
-#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-
-BLEServer* pServer = NULL;
-BLECharacteristic* pCharacteristic = NULL;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
+// Exemple de pins génériques pour un ESP32-C3 couplé à un SX1262
+#define NSS  7
+#define DIO1 3
+#define NRST 10
+#define BUSY 2
 
 // ---------------------------------------------------------
-// SIMULATION DE DONNÉES (Pour tester l'interface)
+// 2. CÂBLAGE DU MODULE GPS
 // ---------------------------------------------------------
-float currentLat = 48.8566; // Point de départ (Paris)
-float currentLon = 2.3522;
-int currentAlt = 0;
-int currentRssi = -40;
+// Le fil TX du GPS va sur la broche RX de l'ESP32-C3
+// Le fil RX du GPS va sur la broche TX de l'ESP32-C3
+#define GPS_RX_PIN 20 
+#define GPS_TX_PIN 21 
+#define GPS_BAUD 9600 
 
-// Callbacks pour gérer la connexion/déconnexion BLE
-class MyServerCallbacks: public BLEServerCallbacks {
-    void onConnect(BLEServer* pServer) {
-      deviceConnected = true;
-    };
-    void onDisconnect(BLEServer* pServer) {
-      deviceConnected = false;
-    }
-};
+SX1262 radio = new Module(NSS, DIO1, NRST, BUSY);
+TinyGPSPlus gps;
+HardwareSerial gpsSerial(1); // UART 1 matériel
+
+unsigned long lastTransmission = 0;
+const int INTERVALLE_ENVOI = 3000; // Envoi de la télémétrie toutes les 3s
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Démarrage du Serveur BLE...");
-
-  // 1. Initialisation du périphérique BLE
-  BLEDevice::init(DEVICE_NAME);
-
-  // 2. Création du serveur
-  pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
-
-  // 3. Création du Service
-  BLEService *pService = pServer->createService(SERVICE_UUID);
-
-  // 4. Création de la Caractéristique (Lecture + Notifications)
-  pCharacteristic = pService->createCharacteristic(
-                      CHARACTERISTIC_UUID,
-                      BLECharacteristic::PROPERTY_READ   |
-                      BLECharacteristic::PROPERTY_NOTIFY
-                    );
-
-  //  Indispensable pour que Web Bluetooth reçoive les notifications (StartNotifications)
-  pCharacteristic->addDescriptor(new BLE2902());
-
-  // 5. Démarrage du service et de l'annonce (Advertising)
-  pService->start();
   
-  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(false);
-  pAdvertising->setMinPreferred(0x0); // Aide à la découverte sur iPhone/Mac
-  BLEDevice::startAdvertising();
+  // Démarrage de la liaison série avec le GPS
+  gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   
-  Serial.println("En attente de connexion client...");
+  Serial.print("[TX] Initialisation LoRa... ");
+  
+  // Configuration LoRa (Europe 868MHz, identique au récepteur)
+  int state = radio.begin(868.0, 125.0, 9, 7, 0x12, 10, 8, 1.6, false);
+  
+  if (state == RADIOLIB_ERR_NONE) {
+    Serial.println("OK !");
+    radio.setOutputPower(14); // Puissance d'émission
+  } else {
+    Serial.print("ERREUR LoRa, code: ");
+    Serial.println(state);
+    while (true); // Stoppe le programme si la puce LoRa n'est pas détectée
+  }
 }
 
 void loop() {
-  // Si le téléphone/navigateur est connecté, on génère et envoie la trame
-  if (deviceConnected) {
-    
-    // --- 1. SIMULATION DES MOUVEMENTS (À remplacer par la lecture de tes données réelles) ---
-    currentLat += 0.0001;  // Le drone avance vers le Nord
-    currentLon += 0.00005; // Le drone avance vers l'Est
-    currentAlt = (currentAlt < 120) ? currentAlt + 1 : 120; // Monte jusqu'à 120m
-    currentRssi = random(-90, -40); // Bruit radio simulé
-    
-    String etat = (currentAlt < 5) ? "GROUND" : "HIGH";
+  // 1. Lecture ininterrompue des données GPS entrantes
+  while (gpsSerial.available() > 0) {
+    gps.encode(gpsSerial.read());
+  }
 
-    // --- 2. CRÉATION DU JSON ---
-    // Utilisation d'ArduinoJson 7
+  // 2. Timer d'envoi LoRa (ne bloque pas la lecture du GPS)
+  if (millis() - lastTransmission > INTERVALLE_ENVOI) {
+    lastTransmission = millis();
+    
     JsonDocument doc;
+    doc["drone_id"] = "fil_blanc"; // Ton identifiant de drone
     
-    doc["drone_id"] = DRONE_ID;
-    doc["etat"]     = etat;
-    doc["alt"]      = currentAlt;
-    doc["dist"]     = currentAlt * 2.5; // Distance simulée
-    doc["rssi"]     = currentRssi;
-    doc["lat"]      = currentLat;
-    doc["lon"]      = currentLon;
-
-    // Sérialisation du JSON dans une chaîne de caractères
-    String jsonString;
-    serializeJson(doc, jsonString);
-
-    // --- 3. ENVOI VIA BLUETOOTH ---
-    pCharacteristic->setValue(jsonString.c_str());
-    pCharacteristic->notify(); // Déclenche l'événement côté JavaScript
+    // 3. Validation de la qualité du signal GPS
+    if (gps.location.isValid() && gps.location.age() < 2000) {
+      doc["etat"] = "HIGH";
+      doc["lat"]  = gps.location.lat();
+      doc["lon"]  = gps.location.lng();
+      doc["alt"]  = gps.altitude.meters();
+    } else {
+      doc["etat"] = "BOOT"; // Cherche les satellites
+      doc["lat"]  = 0.0;
+      doc["lon"]  = 0.0;
+      doc["alt"]  = 0.0;
+    }
     
-    Serial.print("Trame envoyée : ");
-    Serial.println(jsonString);
+    doc["rssi"] = 0; 
+    
+    String payload;
+    serializeJson(doc, payload);
 
-    // On envoie une trame toutes les 500ms (2 Hz)
-    delay(500); 
-  }
+    Serial.print("[TX] Envoi: ");
+    Serial.println(payload);
 
-  // Gestion propre de la déconnexion (redémarre l'advertising pour pouvoir se reconnecter)
-  if (!deviceConnected && oldDeviceConnected) {
-      delay(500);
-      pServer->startAdvertising();
-      Serial.println("Client déconnecté. Redémarrage de l'Advertising.");
-      oldDeviceConnected = deviceConnected;
-  }
-  
-  // Gestion propre de la nouvelle connexion
-  if (deviceConnected && !oldDeviceConnected) {
-      oldDeviceConnected = deviceConnected;
+    // 4. Transmission de la trame JSON
+    radio.transmit(payload);
   }
 }
