@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>DLXR Tracker V6.7 - MÉTÉO AVANCÉE & CONFIG</title>
+  <title>DLXR Tracker V6.8 - MÉTÉO AVANCÉE & CONFIG</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet" />
@@ -48,7 +48,7 @@
     /* ========================================== */
     #wind-widget { 
       position: absolute; top: 10px; right: 16px; z-index: 999; 
-      background: rgba(15, 22, 40, 0.85); border: 2px solid var(--weather-color); /* Bordure dynamique */
+      background: rgba(15, 22, 40, 0.85); border: 2px solid var(--weather-color);
       border-radius: 6px; padding: 8px 12px; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(4px); transition: border-color 0.3s;
     }
     .wind-arrow { width: 22px; height: 22px; transition: transform 0.5s ease; }
@@ -69,7 +69,6 @@
     .slider-row label { font-size: 0.75rem; font-weight: 600; display: flex; justify-content: space-between; }
     .slider-row span { font-family: var(--mono); color: var(--weather-color); transition: color 0.3s; }
     
-    /* Style personnalisé des curseurs pour refléter la couleur de la météo */
     input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
     input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--weather-color); cursor: pointer; margin-top: -6px; transition: background 0.3s; }
     input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: var(--border); border-radius: 2px; }
@@ -110,12 +109,11 @@
 <body>
 
   <header>
-    <div class="logo">DL<span>X</span>R V6.7 <span>METEO</span></div>
+    <div class="logo">DL<span>X</span>R V6.8 <span>METEO</span></div>
     <button id="ble-btn" onclick="connectBLE()">⚡ AJOUTER RX</button>
   </header>
 
   <div id="map">
-    <!-- WIDGET MÉTÉO DÉTAILLÉ -->
     <div id="wind-widget">
       <svg class="wind-arrow" id="wind-arrow-ui" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="2" x2="12" y2="22"></line>
@@ -129,11 +127,10 @@
       </div>
     </div>
 
-    <!-- CONTRÔLES TEMPORELS (CURSEURS) -->
+    <!-- CONTRÔLES TEMPORELS -->
     <div id="time-controls">
       <div class="slider-row">
         <label>Date <span id="label-date">--/--/----</span></label>
-        <!-- max sera défini dynamiquement par JS selon les données API -->
         <input type="range" id="slider-date" min="0" max="14" step="1" value="7">
       </div>
       <div class="slider-row">
@@ -157,28 +154,24 @@
     // 1. BLOC DE CONFIGURATION CENTRALISÉ
     // ==========================================
     const CONFIG = {
-      // Point d'origine pour le dessin du soleil et du vecteur vent (Le point jaune)
-      origin: { lat: 47.854414, lon: 3.434632 },
+      origin: { lat: 47.854408, lon: 3.434616 }, // Point jaune du vecteur vent
       
-      // Piste 1 (Principale 05/23)
       runway1: { 
-        lat1: 47.854850, lon1: 3.435555, // Début (Seuil 05)
-        lat2: 47.853890, lon2: 3.434071, // Fin (Seuil 23)
+        lat1: 47.853890, lon1: 3.434071, // Début (Seuil 05 - Sud-Ouest)
+        lat2: 47.854850, lon2: 3.435555, // Fin (Seuil 23 - Nord-Est)
         width: 25,                       // Largeur en mètres
-        heading: 51                      // QFU magnétique exact
+        heading: 51                      // QFU magnétique
       },
       
-      // Piste 2 (Secondaire 14/32)
       runway2: { 
         lat1: 47.854841, lon1: 3.434967, // Début (Seuil 14)
         lat2: 47.854277, lon2: 3.434944, // Fin (Seuil 32)
-        width: 11.8                      // Largeur en mètres
+        width: 11.8                      
       },
 
-      // Seuils d'alerte météo (en km/h) pour les rafales
       weatherThresholds: {
-        safe: 15,    // En dessous = Vert (Idéal)
-        warning: 35  // Au-dessus = Rouge (Danger), Entre les deux = Jaune
+        safe: 15,    // Vert
+        warning: 35  // Rouge
       }
     };
 
@@ -191,8 +184,6 @@
     let connectedRX = [], drones = {}; 
     let userMarker = null, myLat = null, myLon = null;
     let autoCenter = true, centerThrottleTimeout = null;
-    
-    // Structure pour stocker l'historique et les prévisions Open-Meteo
     let weatherData = null;
 
     // ==========================================
@@ -210,12 +201,20 @@
     }
 
     // ==========================================
-    // 4. INITIALISATION CARTE LEAFLET
+    // 4. INITIALISATION CARTE LEAFLET & BOUCLIER D'ÉVÉNEMENTS
     // ==========================================
     const map = L.map('map', { center: [CONFIG.origin.lat, CONFIG.origin.lon], zoom: 18, zoomControl: false });
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri', maxZoom: 20 }).addTo(map);
     L.control.zoom({ position: 'topleft' }).addTo(map);
     map.on('dragstart', () => { autoCenter = false; });
+
+    // --- CORRECTION DU BUG DES CURSEURS ---
+    // On isole les divs d'interface pour empêcher la carte d'intercepter les clics/drag
+    const timeControls = document.getElementById('time-controls');
+    const windWidget = document.getElementById('wind-widget');
+    L.DomEvent.disableClickPropagation(timeControls);
+    L.DomEvent.disableScrollPropagation(timeControls);
+    L.DomEvent.disableClickPropagation(windWidget);
 
     // --- Dessin Piste 1 ---
     const r1Corners = getRunwayPoly(CONFIG.runway1.lat1, CONFIG.runway1.lon1, CONFIG.runway1.lat2, CONFIG.runway1.lon2, CONFIG.runway1.width);
@@ -238,18 +237,14 @@
       className: '',
       html: `
         <div class="onmap-wind-container">
-          <!-- ViewBox 160x160. Origine à 0,0 au centre -->
           <svg viewBox="-80 -80 160 160" style="width: 160px; height: 160px; overflow: visible;">
-            <!-- Groupe Traversier (Rouge) -->
             <g id="svg-crosswind-group" style="transition: transform 0.3s ease;">
               <line id="svg-crosswind-line" x1="0" y1="0" x2="0" y2="0" stroke="#ff3b5c" stroke-width="4.5" stroke-linecap="round" />
             </g>
-            <!-- Groupe Vent Global (Bleu) -->
             <g id="svg-wind-group" style="transition: transform 0.3s ease;">
               <line x1="0" y1="0" x2="0" y2="-60" stroke="#00d4ff" stroke-width="3" stroke-linecap="round" />
               <polygon points="-7,-50 7,-50 0,-65" fill="#00d4ff" />
             </g>
-            <!-- Point d'origine central -->
             <circle cx="0" cy="0" r="5" fill="#ffd700" stroke="white" stroke-width="1.5" />
           </svg>
         </div>
@@ -265,21 +260,14 @@
     const sliderTime = document.getElementById('slider-time');
     let sunPathPolyline = null, sunMarker = null;
 
-    /**
-     * Charge les données météo depuis Open-Meteo pour 7 jours passés et 7 jours futurs
-     */
     async function loadWeatherData() {
       try {
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.origin.lat}&longitude=${CONFIG.origin.lon}&hourly=windspeed_10m,winddirection_10m,windgusts_10m,precipitation&past_days=7&forecast_days=7&timezone=auto`;
         const res = await fetch(url);
         const data = await res.json();
-        
-        // Stocke les données au format horaire
         weatherData = data.hourly;
         
-        // Configuration initiale des curseurs pour cibler l'heure actuelle
         const now = new Date();
-        // Trouve l'index de l'heure la plus proche dans le tableau retourné par l'API
         let closestIndex = 0;
         let minDiff = Infinity;
         
@@ -289,29 +277,21 @@
           if (diff < minDiff) { minDiff = diff; closestIndex = i; }
         }
 
-        // Le nombre total de jours est la taille du tableau divisé par 24
         const totalDays = Math.floor(weatherData.time.length / 24);
         sliderDate.max = totalDays - 1;
         
-        // Assigne la position des curseurs
         sliderDate.value = Math.floor(closestIndex / 24);
         sliderTime.value = closestIndex % 24;
 
-        // Met à jour l'affichage avec ces valeurs
         applyWeatherData();
 
-        // Ajoute les écouteurs d'événements pour le glissement des curseurs
         sliderDate.addEventListener('input', applyWeatherData);
         sliderTime.addEventListener('input', applyWeatherData);
-
       } catch (e) {
         console.error("Impossible de charger l'API Météo", e);
       }
     }
 
-    /**
-     * Applique les données météo à l'UI et aux vecteurs selon l'index sélectionné par les curseurs
-     */
     function applyWeatherData() {
       if (!weatherData) return;
 
@@ -319,71 +299,52 @@
       const hourIdx = parseInt(sliderTime.value);
       const dataIndex = (dayIdx * 24) + hourIdx;
 
-      // Récupération des données pour l'heure précise
       const targetDate = new Date(weatherData.time[dataIndex]);
       const windSpeed = weatherData.windspeed_10m[dataIndex] || 0;
       const windDir = weatherData.winddirection_10m[dataIndex] || 0;
       const windGusts = weatherData.windgusts_10m[dataIndex] || 0;
       const precip = weatherData.precipitation[dataIndex] || 0;
 
-      // Formatage des labels de curseur
       document.getElementById('label-date').textContent = targetDate.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' });
       document.getElementById('label-time').textContent = targetDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-      // Mise à jour de la couleur d'alerte globale
       let alertColor = 'var(--yellow)';
       if (windGusts > CONFIG.weatherThresholds.warning) alertColor = 'var(--red)';
       else if (windGusts <= CONFIG.weatherThresholds.safe) alertColor = 'var(--green)';
       
-      // Injecte la couleur dans CSS pour colorer la bordure et les curseurs
       document.documentElement.style.setProperty('--weather-color', alertColor);
 
-      // Calcul de la composante traversière (Axe piste 05/23 = CONFIG.runway1.heading)
       const angleRad = (windDir - CONFIG.runway1.heading) * (Math.PI / 180);
       const crosswind = Math.sin(angleRad) * windSpeed;
       const absCrosswind = Math.abs(crosswind);
 
-      // Mise à jour des textes du widget
       document.getElementById('ui-wind').textContent = `Vent: ${windSpeed.toFixed(1)} km/h`;
       document.getElementById('ui-gusts').textContent = `Rafales: ${windGusts.toFixed(1)} km/h`;
       document.getElementById('ui-cross').textContent = `Travers: ${absCrosswind.toFixed(1)} km/h`;
       document.getElementById('ui-precip').textContent = `Pluie: ${precip.toFixed(1)} mm`;
       document.getElementById('wind-arrow-ui').style.transform = `rotate(${windDir + 180}deg)`;
 
-      // Mise à jour du SVG sur la carte
       const svgWindGroup = document.getElementById('svg-wind-group');
       const svgCrossGroup = document.getElementById('svg-crosswind-group');
       const svgCrossLine = document.getElementById('svg-crosswind-line');
       
       if (svgWindGroup && svgCrossGroup) {
-        // La flèche bleue pointe vers la destination du vent
         svgWindGroup.style.transform = `rotate(${windDir + 180}deg)`;
-        
-        // Le traversier est perpendiculaire à l'axe de la piste (QFU +/- 90°)
-        // Si crosswind est positif, le vent vient de la droite de la piste, donc on trace vers la gauche
         const crossDir = crosswind > 0 ? (CONFIG.runway1.heading - 90) : (CONFIG.runway1.heading + 90);
         svgCrossGroup.style.transform = `rotate(${crossDir}deg)`;
-        
-        // Longueur de la barre rouge (multiplicateur visuel x2 pour être bien visible sur la map)
         const barLength = Math.max(0, absCrosswind * 2); 
-        // On dessine la ligne vers le haut (Y négatif) dans le groupe qui a été tourné
         svgCrossLine.setAttribute('y2', -barLength);
       }
 
-      // Mise à jour de la position du soleil pour la date et l'heure sélectionnées
       updateSunPosition(targetDate);
     }
 
-    /**
-     * Calcule et dessine la course du soleil pour une date donnée
-     */
     function updateSunPosition(targetDate) {
       const times = SunCalc.getTimes(targetDate, CONFIG.origin.lat, CONFIG.origin.lon);
       const sunPos = SunCalc.getPosition(targetDate, CONFIG.origin.lat, CONFIG.origin.lon);
       const sunAzimuth = (sunPos.azimuth * 180 / Math.PI + 180) % 360;
       const radius = 0.0018; 
       
-      // Dessin de l'arc (seulement si non existant ou si la date (jour) a changé, pour économiser des perfs)
       const arcPoints = [];
       for (let i = 0; i <= 100; i++) {
         const t = new Date(times.sunrise.getTime() + (times.sunset.getTime() - times.sunrise.getTime()) * (i / 100));
@@ -397,7 +358,6 @@
       if (sunPathPolyline) map.removeLayer(sunPathPolyline);
       sunPathPolyline = L.polyline(arcPoints, { color: '#ffb700', weight: 2, dashArray: '4 8', opacity: 0.7 }).addTo(map);
 
-      // Placement de l'icône Soleil (Cachée si le soleil est sous l'horizon)
       if (sunPos.altitude > 0) {
         const currentLat = CONFIG.origin.lat + Math.cos(sunAzimuth * Math.PI / 180) * radius;
         const currentLon = CONFIG.origin.lon + Math.sin(sunAzimuth * Math.PI / 180) * (radius / Math.cos(CONFIG.origin.lat * Math.PI / 180));
@@ -406,11 +366,10 @@
         if (!sunMarker) sunMarker = L.marker([currentLat, currentLon], { icon: sunIcon, interactive: false }).addTo(map);
         else { sunMarker.setLatLng([currentLat, currentLon]); sunMarker.setOpacity(1); }
       } else {
-        if (sunMarker) sunMarker.setOpacity(0); // Masque le marqueur la nuit
+        if (sunMarker) sunMarker.setOpacity(0);
       }
     }
 
-    // Chargement initial des données météo
     loadWeatherData();
 
     // ==========================================
