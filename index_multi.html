@@ -115,6 +115,16 @@
 
     #center-btn { position: absolute; bottom: 20px; right: 16px; z-index: 999; background: var(--panel); border: 1.5px solid var(--border); color: var(--accent); width: 40px; height: 40px; border-radius: 8px; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .map-controls-wrapper { position: relative; width: 100%; height: 0; }
+  
+  /* ========================================== */
+    /* TRAFIC AÉRIEN GRANDEUR (ADS-B)             */
+    /* ========================================== */
+    .real-plane-icon {
+      width: 24px; height: 24px;
+      filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.8));
+      transition: transform 1s linear;
+    }
+  
   </style>
 </head>
 <body>
@@ -632,7 +642,80 @@ L.circleMarker([CONFIG.origin.lat, CONFIG.origin.lon], {radius: 5, color: 'white
         updateGlobalStatus();
       } catch(e) { console.error('Erreur BLE:', e); }
     }
+// ==========================================
+    // 8. TRAFIC AÉRIEN GRANDEUR (ADS-B OpenSky)
+    // ==========================================
+    const trafficLayer = L.layerGroup().addTo(map);
+    let trafficMarkers = {}; // Dictionnaire des avions grandeur
 
+    async function updateAirTraffic() {
+      // Création d'une "boîte" de capture d'environ 50km de rayon autour du terrain
+      const lamin = CONFIG.origin.lat - 0.5;
+      const lamax = CONFIG.origin.lat + 0.5;
+      const lomin = CONFIG.origin.lon - 0.5;
+      const lomax = CONFIG.origin.lon + 0.5;
+      
+      try {
+        const res = await fetch(`https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        const currentFlightIds = new Set();
+
+        if (data.states) {
+          data.states.forEach(state => {
+            const id = state[0]; // ICAO24 (ID unique de l'avion)
+            const callsign = state[1] ? state[1].trim() : "Inconnu"; // Indicatif (ex: AFR123)
+            const lon = state[5];
+            const lat = state[6];
+            const alt = state[7] || state[13] || 0; // Altitude barométrique
+            const track = state[10] || 0; // Cap vrai
+            const velocity = (state[9] || 0) * 3.6; // Conversion vitesse m/s -> km/h
+
+            if (lat === null || lon === null) return;
+            currentFlightIds.add(id);
+
+            // Icone SVG d'avion de ligne orientée vers son vrai cap
+            const htmlIcon = `
+              <div style="transform: rotate(${track}deg);">
+                <svg class="real-plane-icon" viewBox="0 0 24 24" fill="#aab0c0" stroke="#ffffff" stroke-width="1">
+                  <path d="M21,16V14L13,9V3.5C13,2.67 12.33,2 11.5,2C10.67,2 10,2.67 10,3.5V9L2,14V16L10,13.5V19L8,20.5V22L11.5,21L15,22V20.5L13,19V13.5L21,16Z" />
+                </svg>
+              </div>`;
+
+            const icon = L.divIcon({ className: '', html: htmlIcon, iconSize: [24, 24], iconAnchor: [12, 12] });
+
+            // Création ou mise à jour de la position sur la carte
+            if (!trafficMarkers[id]) {
+              trafficMarkers[id] = L.marker([lat, lon], { icon: icon }).addTo(trafficLayer);
+            } else {
+              trafficMarkers[id].setLatLng([lat, lon]);
+              trafficMarkers[id].setIcon(icon);
+            }
+            
+            // Pop-up d'information au survol (réutilisation du CSS de ton label de piste)
+            trafficMarkers[id].bindTooltip(`<b>${callsign}</b><br>Alt: ${Math.round(alt)}m<br>Vit: ${Math.round(velocity)} km/h`, {
+              className: 'runway-label', direction: 'top', offset: [0, -10]
+            });
+          });
+        }
+
+        // Nettoyage des avions qui ont quitté la zone
+        Object.keys(trafficMarkers).forEach(id => {
+          if (!currentFlightIds.has(id)) {
+            trafficLayer.removeLayer(trafficMarkers[id]);
+            delete trafficMarkers[id];
+          }
+        });
+
+      } catch (error) {
+        // On reste silencieux en cas d'erreur réseau pour ne pas spammer la console
+      }
+    }
+
+    // Premier scan du ciel au démarrage, puis rafraîchissement toutes les 15 secondes
+    updateAirTraffic();
+    setInterval(updateAirTraffic, 15000);
     startGeolocation();
   </script>
 </body>
