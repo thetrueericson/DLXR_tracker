@@ -4,6 +4,16 @@
 
 Elle fonctionne entièrement dans le navigateur web sans aucune installation grâce à l'API Web Bluetooth, et permet désormais de **se connecter simultanément à plusieurs modules relais au sol** (ex: ESP32 Heltec LoRa).
 
+---
+
+## 🚀 Démarrage rapide / Lancer l'interface
+
+👉 **[CLIQUER ICI POUR LANCER L'INTERFACE MULTI-DRONES](https://[TON-SERVEUR-OU-GITHUB-PAGES]/index_multi.html)** 👈
+
+> ⚠️ **Note technique importante :** L'API Web Bluetooth est une fonctionnalité de sécurité critique des navigateurs. Le fichier `index_multi.html` **doit obligatoirement être hébergé sur un serveur sécurisé (HTTPS)** ou lancé en réseau local (`localhost` ou `127.0.0.1`) pour que le bouton de connexion Bluetooth fonctionne. Il ne fonctionnera pas si vous l'ouvrez simplement avec un double-clic (protocole `file://`).
+
+---
+
 ## ✨ Fonctionnalités
 
 *   **Zéro Installation :** Fonctionne directement via un navigateur web (Chrome/Edge/Opera) grâce à la `Web Bluetooth API`.
