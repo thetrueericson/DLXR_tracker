@@ -263,8 +263,8 @@
 
     L.polygon(getRunwayPoly(CONFIG.runway2.lat1, CONFIG.runway2.lon1, CONFIG.runway2.lat2, CONFIG.runway2.lon2, CONFIG.runway2.width), { color: '#ffffff', weight: 1.5, fillColor: '#000000', fillOpacity: 0.75 }).addTo(map);
     L.polyline([ [CONFIG.runway2.lat1, CONFIG.runway2.lon1], [CONFIG.runway2.lat2, CONFIG.runway2.lon2] ], { color: '#ffffff', weight: 2, dashArray: '6 8', opacity: 0.8 }).addTo(map);
-    L.marker([CONFIG.runway2.lat1, CONFIG.runway2.lon1], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">14</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
-    L.marker([CONFIG.runway2.lat2, CONFIG.runway2.lon2], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">32</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
+    L.marker([CONFIG.runway2.lat1, CONFIG.runway2.lon1], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">19</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
+    L.marker([CONFIG.runway2.lat2, CONFIG.runway2.lon2], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">01</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
 
     // Calques Vectoriels
     const windVectorLayer = L.layerGroup().addTo(map);
