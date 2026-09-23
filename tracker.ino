@@ -60,6 +60,7 @@ void loop() {
     
     JsonDocument doc;
     doc["drone_id"] = "fil_blanc";
+    doc["sats"] = gps.satellites.value();
     
     if (gps.location.isValid() && gps.location.age() < 2000) {
       doc["etat"] = "HIGH";
