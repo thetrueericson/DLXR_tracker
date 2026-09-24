@@ -19,9 +19,9 @@ SX1262 radio = new Module(NSS, DIO1, NRST, BUSY);
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, OLED_RST, OLED_SCL, OLED_SDA);
 
 // --- PINS GPS ---
-#define GPS_RX_PIN 47 // Fil TX du GPS à brancher ici
-#define GPS_TX_PIN 48 // Fil RX du GPS à brancher ici
-#define GPS_BAUD 57600 
+#define GPS_RX_PIN 38 // Fil TX du GPS à brancher ici
+#define GPS_TX_PIN 39 // Fil RX du GPS à brancher ici
+#define GPS_BAUD 9600 
 
 TinyGPSPlus gps;
 HardwareSerial gpsSerial(1);
