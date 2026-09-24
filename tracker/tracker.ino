@@ -19,7 +19,7 @@
 // ---------------------------------------------------------
 #define GPS_RX_PIN 21 // Fil TX du GPS branché ici
 #define GPS_TX_PIN 20 // Fil RX du GPS (s'il est branché, sinon peu importe)
-#define GPS_BAUD 57600 
+#define GPS_BAUD 115200 
 
 SX1276 radio = new Module(PIN_NSS, DIO0, NRST, RADIOLIB_NC);
 TinyGPSPlus gps;
