@@ -33,7 +33,7 @@ void updateOLED(int sats, float lat, float lon, String etat) {
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_ncenB08_tr);
   
-  u8g2.drawStr(0, 12, "TX : Chupito");
+  u8g2.drawStr(0, 12, "TX : heltecV4");
   u8g2.drawLine(0, 16, 128, 16);
 
   u8g2.setCursor(0, 32);
