@@ -145,8 +145,7 @@ void loop() {
     
     if (state == RADIOLIB_ERR_NONE) {
       int rssi = (int)radio.getRSSI();
-      payload.replace("\"rssi\":0", "\"rssi\":" + String(rssi));
-      
+payload.replace("}", ",\"rssi\":" + String(rssi) + "}");      
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, payload);
       
