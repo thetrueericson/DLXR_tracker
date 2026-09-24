@@ -594,7 +594,7 @@ L.circleMarker([CONFIG.origin.lat, CONFIG.origin.lon], {radius: 5, color: 'white
     setInterval(() => {
       const now = Date.now();
       Object.keys(drones).forEach(id => {
-        if (now - drones[id].lastSeen > 16000) {
+        if (now - drones[id].lastSeen > 20000) {
           const badge = document.getElementById(`badge-${id}`);
           if (badge && badge.textContent !== 'OFFLINE') { badge.textContent = 'OFFLINE'; badge.className = 'state-badge OFFLINE'; }
         }
