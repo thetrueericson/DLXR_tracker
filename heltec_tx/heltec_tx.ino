@@ -23,9 +23,18 @@ SX1262 radio = new Module(NSS, DIO1, NRST, BUSY);
 #define VEXT_PIN 36 
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, OLED_RST, OLED_SCL, OLED_SDA);
 
+// --- DESSIN DU PETIT AVION (16x15 pixels) ---
+#define AVION_WIDTH 16
+#define AVION_HEIGHT 15
+static const unsigned char avion_bits[] U8X8_PROGMEM = {
+  0x00, 0x00, 0x00, 0x02, 0x00, 0x03, 0x80, 0x03, 0xc0, 0x03, 0xe0, 0x03, 
+  0xf0, 0x3f, 0xf8, 0x7f, 0xfc, 0xff, 0xf8, 0x7f, 0x00, 0x1f, 0x00, 0x03, 
+  0x00, 0x03, 0x00, 0x02, 0x00, 0x00
+};
+
 TinyGPSPlus gps;
 unsigned long lastTxTime = 0;
-const int txInterval = 3000; // Envoi toutes les 3 secondes
+const int txInterval = 3000; 
 
 void setup() {
   Serial.begin(115200);
@@ -36,25 +45,32 @@ void setup() {
   delay(50);
   u8g2.begin();
   u8g2.setContrast(255);
+
+  // --- ANIMATION AIR FLEURY CLUB (Optimisée) ---
+  for (int x = 128; x > -160; x -= 15) {
+    u8g2.clearBuffer();
+    u8g2.drawXBM(x, 26, AVION_WIDTH, AVION_HEIGHT, avion_bits);
+    u8g2.setFont(u8g2_font_ncenB10_tr); 
+    u8g2.drawStr(x + 20, 38, "AIR FLEURY CLUB"); // Banderole attachée derrière l'avion
+    u8g2.sendBuffer();
+  }
+
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_ncenB08_tr);
-<<<<<<< HEAD
   u8g2.drawStr(0, 15, "Boot Katarina...");
-=======
-  u8g2.drawStr(0, 15, "Boot Bernadette...");
->>>>>>> 0fd28b4278c68cf879967076a5c1bf916092695a
   u8g2.sendBuffer();
 
   // 2. Allumage et initialisation du GPS matériel
   pinMode(VGNSS_CTRL, OUTPUT);
-  digitalWrite(VGNSS_CTRL, LOW); // Activation de l'alimentation du GPS
+  digitalWrite(VGNSS_CTRL, LOW); 
   delay(500);
   Serial1.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
 
-  // 3. Initialisation LoRa
-  int state = radio.begin(868.0, 125.0, 9, 7, 0x12, 10, 8, 1.6, false);
+  // 3. Initialisation LoRa (Passage en SF11)
+  int state = radio.begin(868.0, 125.0, 11, 7, 0x12, 10, 8, 1.6, false);
   if (state == RADIOLIB_ERR_NONE) {
-    u8g2.drawStr(0, 30, "LoRa OK");
+    radio.setDio2AsRfSwitch(true); // Connexion de l'antenne
+    u8g2.drawStr(0, 30, "LoRa OK (SF11)");
   } else {
     u8g2.drawStr(0, 30, "Erreur LoRa !");
   }
@@ -71,11 +87,7 @@ void loop() {
   // Envoi LoRa toutes les 3 secondes
   if (millis() - lastTxTime > txInterval) {
     String payload = "{";
-<<<<<<< HEAD
     payload += "\"drone_id\":\"Katarina\",";
-=======
-    payload += "\"drone_id\":\"Bernadette\",";
->>>>>>> 0fd28b4278c68cf879967076a5c1bf916092695a
     payload += "\"sats\":" + String(gps.satellites.value()) + ",";
     
     if (gps.location.isValid()) {
@@ -98,11 +110,7 @@ void loop() {
     // Mise à jour de l'écran OLED
     u8g2.clearBuffer();
     u8g2.setCursor(0, 15);
-<<<<<<< HEAD
     u8g2.print("ID: Katarina");
-=======
-    u8g2.print("ID: Bernadette");
->>>>>>> 0fd28b4278c68cf879967076a5c1bf916092695a
     
     u8g2.setCursor(0, 30);
     u8g2.print("Sats: ");
