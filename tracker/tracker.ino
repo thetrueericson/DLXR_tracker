@@ -1,89 +1,95 @@
 #include <RadioLib.h>
+#include <TinyGPSPlus.h>
 #include <SPI.h>
-#include <ArduinoJson.h>
-#include <TinyGPS++.h>
 
-// ---------------------------------------------------------
-// 1. CÂBLAGE LORA SX1276 SUR ESP32-C3
-// ---------------------------------------------------------
+// --- CONFIGURATION GPS (Earhart - ESP32-C3) ---
+#define GPS_RX_PIN 20 
+#define GPS_TX_PIN 21 
+#define GPS_BAUD 9600
+
+// --- CONFIGURATION SPI & LORA ---
 #define PIN_MISO 2
 #define PIN_MOSI 3
 #define PIN_SCK  4
+#define PIN_NSS  5
+#define DIO0     6  
+#define NRST     7  
 
-#define PIN_NSS  5  // Chip Select
-#define DIO0     6  // Interruption
-#define NRST     7  // Reset LoRa
+// On déclare un SX1276 (très probable pour un RFM95 DIY) au lieu d'un SX1262
+SX1276 radio = new Module(PIN_NSS, DIO0, NRST, RADIOLIB_NC); 
 
-// ---------------------------------------------------------
-// 2. CÂBLAGE GPS
-// ---------------------------------------------------------
-#define GPS_RX_PIN 21 // Fil TX du GPS branché ici
-#define GPS_TX_PIN 20 // Fil RX du GPS (s'il est branché, sinon peu importe)
-#define GPS_BAUD 9600 
-
-SX1276 radio = new Module(PIN_NSS, DIO0, NRST, RADIOLIB_NC);
 TinyGPSPlus gps;
-HardwareSerial gpsSerial(1); 
-
-unsigned long lastTransmission = 0;
-const int INTERVALLE_ENVOI = 3000; 
+unsigned long lastTxTime = 0;
+unsigned long lastDebugTime = 0;
+const int txInterval = 3000;
 
 void setup() {
   Serial.begin(115200);
-  
-  gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
-
   delay(2000); 
-  Serial.print("[TX] Initialisation SPI & LoRa... ");
+  Serial.println("\n--- BOOT EARHART (ESP32-C3) ---");
 
+  // 1. Initialisation GPS
+  Serial0.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  Serial.printf("Ecoute GPS sur RX=%d a %d bauds\n", GPS_RX_PIN, GPS_BAUD);
+
+  // 2. Initialisation du bus SPI
   SPI.begin(PIN_SCK, PIN_MISO, PIN_MOSI, PIN_NSS);
-  
+
+  // 3. Initialisation LoRa (Paramètres adaptés au SX1276)
   int state = radio.begin(868.0, 125.0, 9, 7, 0x12, 10, 8, 0);
-  
   if (state == RADIOLIB_ERR_NONE) {
-    Serial.println("OK !");
-    radio.setOutputPower(14); 
+    // Pas de setDio2AsRfSwitch ici, l'antenne est gérée physiquement !
+    Serial.println("LoRa : OK (Puce SX1276 detectee !)");
   } else {
-    Serial.print("ERREUR, code: ");
-    Serial.println(state);
-    while (true);
+    Serial.printf("LoRa : ERREUR (Code %d)\n", state);
   }
 }
 
 void loop() {
-  while (gpsSerial.available() > 0) {
-    char c = gpsSerial.read();
-    Serial.write(c); // ecriture serie
-    gps.encode(c);
+  // Lecture du GPS
+  while (Serial0.available() > 0) {
+    gps.encode(Serial0.read());
   }
 
-  if (millis() - lastTransmission > INTERVALLE_ENVOI) {
-    lastTransmission = millis();
+  // Debug Série : Bilan de santé GPS
+  if (millis() - lastDebugTime > 1000) {
+    Serial.printf("[DEBUG GPS] Sats: %d | Fix Valide: %s | Trames Decodees: %d\n", 
+                  gps.satellites.value(), 
+                  gps.location.isValid() ? "OUI" : "NON",
+                  gps.sentencesWithFix());
+    lastDebugTime = millis();
+  }
+
+  // Envoi LoRa toutes les 3 secondes
+  if (millis() - lastTxTime > txInterval) {
+    String payload = "{";
+    payload += "\"drone_id\":\"Earhart\",";
+    payload += "\"sats\":" + String(gps.satellites.value()) + ",";
     
-    JsonDocument doc;
-    doc["drone_id"] = "fil_blanc";
-    doc["sats"] = gps.satellites.value();
-    
-    if (gps.location.isValid() && gps.location.age() < 2000) {
-      doc["etat"] = "HIGH";
-      doc["lat"]  = gps.location.lat();
-      doc["lon"]  = gps.location.lng();
-      doc["alt"]  = gps.altitude.meters();
+    if (gps.location.isValid()) {
+      payload += "\"etat\":\"VOL\",";
+      payload += "\"lat\":" + String(gps.location.lat(), 6) + ",";
+      payload += "\"lon\":" + String(gps.location.lng(), 6) + ",";
+      payload += "\"alt\":" + String(gps.altitude.meters(), 1);
     } else {
-      doc["etat"] = "BOOT";
-      doc["lat"]  = 0.0;
-      doc["lon"]  = 0.0;
-      doc["alt"]  = 0.0;
+      payload += "\"etat\":\"RECHERCHE\",";
+      payload += "\"lat\":0,";
+      payload += "\"lon\":0,";
+      payload += "\"alt\":0";
+    }
+    payload += "}";
+
+    Serial.print("[LORA TX] Envoi : ");
+    Serial.print(payload);
+    
+    int state = radio.transmit(payload);
+    
+    if (state == RADIOLIB_ERR_NONE) {
+      Serial.println(" -> SUCCES");
+    } else {
+      Serial.printf(" -> ECHEC (Erreur %d)\n", state);
     }
     
-    doc["rssi"] = 0; 
-    
-    String payload;
-    serializeJson(doc, payload);
-
-    Serial.print("[TX] Envoi: ");
-    Serial.println(payload);
-
-    radio.transmit(payload);
+    lastTxTime = millis();
   }
 }
