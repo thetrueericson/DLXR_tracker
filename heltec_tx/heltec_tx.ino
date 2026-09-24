@@ -34,7 +34,7 @@ static const unsigned char avion_bits[] U8X8_PROGMEM = {
 
 TinyGPSPlus gps;
 unsigned long lastTxTime = 0;
-const int txInterval = 3000; 
+const int txInterval = 10000; 
 
 void setup() {
   Serial.begin(115200);
