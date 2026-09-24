@@ -38,7 +38,11 @@ void setup() {
   u8g2.setContrast(255);
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_ncenB08_tr);
+<<<<<<< HEAD
+  u8g2.drawStr(0, 15, "Boot Katarina...");
+=======
   u8g2.drawStr(0, 15, "Boot Bernadette...");
+>>>>>>> 0fd28b4278c68cf879967076a5c1bf916092695a
   u8g2.sendBuffer();
 
   // 2. Allumage et initialisation du GPS matériel
@@ -67,7 +71,11 @@ void loop() {
   // Envoi LoRa toutes les 3 secondes
   if (millis() - lastTxTime > txInterval) {
     String payload = "{";
+<<<<<<< HEAD
+    payload += "\"drone_id\":\"Katarina\",";
+=======
     payload += "\"drone_id\":\"Bernadette\",";
+>>>>>>> 0fd28b4278c68cf879967076a5c1bf916092695a
     payload += "\"sats\":" + String(gps.satellites.value()) + ",";
     
     if (gps.location.isValid()) {
@@ -90,7 +98,11 @@ void loop() {
     // Mise à jour de l'écran OLED
     u8g2.clearBuffer();
     u8g2.setCursor(0, 15);
+<<<<<<< HEAD
+    u8g2.print("ID: Katarina");
+=======
     u8g2.print("ID: Bernadette");
+>>>>>>> 0fd28b4278c68cf879967076a5c1bf916092695a
     
     u8g2.setCursor(0, 30);
     u8g2.print("Sats: ");
