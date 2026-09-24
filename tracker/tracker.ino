@@ -21,7 +21,7 @@ SX1276 radio = new Module(PIN_NSS, DIO0, NRST, RADIOLIB_NC);
 TinyGPSPlus gps;
 unsigned long lastTxTime = 0;
 unsigned long lastDebugTime = 0;
-const int txInterval = 3000;
+const int txInterval = 10000;
 
 void setup() {
   Serial.begin(115200);
