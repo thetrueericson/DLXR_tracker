@@ -36,7 +36,7 @@ void setup() {
   SPI.begin(PIN_SCK, PIN_MISO, PIN_MOSI, PIN_NSS);
 
   // 3. Initialisation LoRa (Paramètres adaptés au SX1276)
-  int state = radio.begin(868.0, 125.0, 9, 7, 0x12, 10, 8, 0);
+  int state = radio.begin(868.0, 125.0, 11, 7, 0x12, 10, 8, 0);
   if (state == RADIOLIB_ERR_NONE) {
     // Pas de setDio2AsRfSwitch ici, l'antenne est gérée physiquement !
     Serial.println("LoRa : OK (Puce SX1276 detectee !)");
