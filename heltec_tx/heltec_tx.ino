@@ -21,7 +21,7 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, OLED_RST, OLED_SCL, OLED_SDA);
 // --- PINS GPS ---
 #define GPS_RX_PIN 47 // Fil TX du GPS à brancher ici
 #define GPS_TX_PIN 48 // Fil RX du GPS à brancher ici
-#define GPS_BAUD 9600 
+#define GPS_BAUD 57600 
 
 TinyGPSPlus gps;
 HardwareSerial gpsSerial(1);
@@ -33,7 +33,7 @@ void updateOLED(int sats, float lat, float lon, String etat) {
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_ncenB08_tr);
   
-  u8g2.drawStr(0, 12, "TX : heltecV4");
+  u8g2.drawStr(0, 12, "TX : Bernadette");
   u8g2.drawLine(0, 16, 128, 16);
 
   u8g2.setCursor(0, 32);
@@ -99,7 +99,7 @@ void loop() {
     lastTransmission = millis();
     
     JsonDocument doc;
-    doc["drone_id"] = "Chupito"; 
+    doc["drone_id"] = "Bernadette"; 
     
     int sats = gps.satellites.value();
     doc["sats"] = sats;
