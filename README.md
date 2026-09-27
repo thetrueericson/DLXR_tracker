@@ -8,9 +8,9 @@ Elle fonctionne entièrement dans le navigateur web sans aucune installation gr�
 
 ## 🚀 Démarrage rapide / Lancer l'interface
 
-👉 **[[CLIQUER ICI POUR LANCER L'INTERFACE MULTI-DRONES](https://thetrueericson.github.io/DLXR_tracker/index_multi.html)]** 👈
+👉 **[[CLIQUER ICI POUR LANCER L'INTERFACE MULTI-DRONES](https://thetrueericson.github.io/DLXR_tracker/index.html)]** 👈
 
-> ⚠️ **Note technique importante :** L'API Web Bluetooth est une fonctionnalité de sécurité critique des navigateurs. Le fichier `index_multi.html` **doit obligatoirement être hébergé sur un serveur sécurisé (HTTPS)** ou lancé en réseau local (`localhost` ou `127.0.0.1`) pour que le bouton de connexion Bluetooth fonctionne. Il ne fonctionnera pas si vous l'ouvrez simplement avec un double-clic (protocole `file://`).
+> ⚠️ **Note technique importante :** L'API Web Bluetooth est une fonctionnalité de sécurité critique des navigateurs. Le fichier `index.html` **doit obligatoirement être hébergé sur un serveur sécurisé (HTTPS)** ou lancé en réseau local (`localhost` ou `127.0.0.1`) pour que le bouton de connexion Bluetooth fonctionne. Il ne fonctionnera pas si vous l'ouvrez simplement avec un double-clic (protocole `file://`).
 
 ---
 
@@ -44,7 +44,7 @@ Le client web filtre les appareils dont le nom commence par **`DLXR_RX`** et éc
 *   **Service UUID :** `4fafc201-1fb5-459e-8fcc-c5c9c331914b`
 *   **Characteristic UUID :** `beb5483e-36e1-4688-b7f5-ea07361b26a8`
 
-### Format JSON attendu (Mise à jour V6)
+### Format JSON attendu (Mise à jour V6 json)
 Pour que l'interface puisse gérer plusieurs aéronefs, **la clé `drone_id` (ou `id`) est désormais requise** dans la trame JSON.
 
 *Exemple de trame de télémétrie classique (Multi-émetteur) :*
