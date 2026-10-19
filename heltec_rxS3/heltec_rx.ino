@@ -145,27 +145,50 @@ void loop() {
     
     if (state == RADIOLIB_ERR_NONE) {
       int rssi = (int)radio.getRSSI();
-payload.replace("}", ",\"rssi\":" + String(rssi) + "}");      
+      String id = "Inconnu";
+      
+      // 1. Décodage Universel pour l'écran OLED
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, payload);
       
-      if (!error) {
-        String id = doc["drone_id"].as<String>();
-        
-        bool found = false;
-        for (int i = 0; i < trackerCount; i++) {
-          if (trackers[i].id == id) {
-            trackers[i].rssi = rssi;
-            found = true;
-            break;
-          }
+      if (!error && doc.containsKey("drone_id")) {
+        // Format JSON moderne (ex: Katarina V4)
+        id = doc["drone_id"].as<String>();
+      } else {
+        // Fallback pour anciens trackers Jivaro ou CSV Brut
+        int idxID = payload.indexOf("ID:");
+        if (idxID != -1) {
+          int endIdx = payload.indexOf(",", idxID);
+          if (endIdx == -1) endIdx = payload.length();
+          id = payload.substring(idxID + 3, endIdx);
+        } else if (payload.indexOf(",") != -1 && !payload.startsWith("{")) {
+          // Format purement CSV (ex: "AvionMarc,47.85,3.43")
+          id = payload.substring(0, payload.indexOf(","));
         }
-        if (!found && trackerCount < 3) {
-          trackers[trackerCount].id = id;
-          trackers[trackerCount].rssi = rssi;
-          trackerCount++;
+      }
+      id.trim();
+      
+      // Mise à jour de la liste OLED
+      bool found = false;
+      for (int i = 0; i < trackerCount; i++) {
+        if (trackers[i].id == id) {
+          trackers[i].rssi = rssi;
+          found = true;
+          break;
         }
-        refreshDisplay = true; 
+      }
+      if (!found && trackerCount < 3) {
+        trackers[trackerCount].id = id;
+        trackers[trackerCount].rssi = rssi;
+        trackerCount++;
+      }
+      refreshDisplay = true; 
+
+      // 2. Injection universelle du RSSI pour le Bluetooth
+      if (payload.endsWith("}")) {
+        payload.replace("}", ",\"rssi\":" + String(rssi) + "}");
+      } else {
+        payload += ",RSSI:" + String(rssi); // Ajout pour le texte brut
       }
 
       // Transfert instantané vers DLXR
