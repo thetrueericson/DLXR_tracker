@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>DLXR Tracker V6.9 - MÉTÉO GO/NO-GO</title>
+  <title>DLXR Tracker V7.0 - RADAR & MÉTÉO AFC</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet" />
@@ -25,7 +25,6 @@
       --text:      #e0eeff;
       --muted:     #4a6080;
       
-      /* Variable dynamique modifiée par JS selon l'indice de vol à l'instant T */
       --weather-color: #00ff9d; 
       
       --mono:      'Share Tech Mono', monospace;
@@ -57,8 +56,7 @@
     .wind-arrow { width: 22px; height: 22px; transition: transform 0.5s ease; }
     .wind-data { display: flex; flex-direction: column; gap: 2px; }
     .wind-text { font-family: var(--mono); font-size: 0.7rem; color: #fff; }
-    /* La couleur des textes d'alerte suit l'indice global */
-.warning { color: #fff; font-weight: bold; text-shadow: 0 0 8px var(--weather-color); }
+    .warning { color: #fff; font-weight: bold; text-shadow: 0 0 8px var(--weather-color); }
 
     /* ========================================== */
     /* CONTRÔLES MÉTÉO (Curseurs Temps Go/No-Go)  */
@@ -72,10 +70,8 @@
     .slider-row label { font-size: 0.75rem; font-weight: 600; display: flex; justify-content: space-between; }
     .slider-row span { font-family: var(--mono); color: #fff; text-shadow: 0 0 8px var(--weather-color); transition: text-shadow 0.3s; }
     
-    /* Curseurs : La barre (track) reçoit le dégradé via le JS, le bouton (thumb) prend la couleur actuelle */
     input[type=range] { 
       -webkit-appearance: none; width: 100%; height: 8px; border-radius: 4px; outline: none; 
-      /* Le background sera injecté par JS (linear-gradient) */
       box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
     }
     input[type=range]::-webkit-slider-thumb { 
@@ -86,12 +82,22 @@
     input[type=range]::-webkit-slider-runnable-track { background: transparent; }
 
     /* ========================================== */
+    /* CONTRÔLES HEATMAP & TRACES (Bas Droit)     */
+    /* ========================================== */
+    #trace-controls {
+      position: absolute; bottom: 75px; right: 16px; z-index: 999; 
+      background: rgba(15, 22, 40, 0.9); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; backdrop-filter: blur(4px);
+    }
+    .trace-check { font-size: 0.75rem; font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text); }
+    .trace-opacity { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
+
+    /* ========================================== */
     /* ÉLÉMENTS CARTOGRAPHIQUES                   */
     /* ========================================== */
     .runway-label { background: rgba(30, 45, 74, 0.85); color: white; border: 1px solid #4a90ff; border-radius: 4px; padding: 2px 6px; font-family: var(--mono); font-size: 0.7rem; font-weight: bold; text-align: center; }
     .runway-label.secondary { background: rgba(42, 42, 42, 0.85); border-color: #666; color: #ccc; }
     .sun-marker { width: 14px; height: 14px; background: #ffb700; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 10px #ffb700; }
-    .onmap-wind-container { position: absolute; width: 160px; height: 160px; transform: translate(-50%, -50%); pointer-events: none; }
 
     /* PANNEAUX DRONES ET BOUTONS */
     #drones-container { background: var(--bg); border-top: 1px solid var(--border); max-height: 35vh; overflow-y: auto; z-index: 1000; display: flex; flex-direction: column; gap: 5px; padding: 5px; }
@@ -102,7 +108,7 @@
     .info-label { font-size: 0.85rem; font-weight: 600; flex-shrink: 0; }
     .info-item { font-family: var(--mono); font-size: 0.75rem; color: var(--text); white-space: nowrap; }
     .state-badge { font-family: var(--mono); font-size: 0.65rem; font-weight: 600; padding: 2px 8px; border-radius: 3px; background: var(--muted); color: var(--bg); }
-    .state-badge.HIGH { background: var(--green); } .state-badge.GROUND { background: var(--accent2); } .state-badge.OFFLINE { background: var(--red); color: white; }
+    .state-badge.HIGH, .state-badge.VOL { background: var(--green); } .state-badge.RECHERCHE, .state-badge.GROUND { background: var(--accent2); } .state-badge.OFFLINE { background: var(--red); color: white; }
     #global-status { background: var(--panel); font-family: var(--mono); font-size: 0.65rem; color: var(--muted); text-align: center; padding: 4px; border-top: 1px solid var(--border); }
     
     .drone-marker { width: 16px; height: 16px; position: relative; }
@@ -116,22 +122,15 @@
     #center-btn { position: absolute; bottom: 20px; right: 16px; z-index: 999; background: var(--panel); border: 1.5px solid var(--border); color: var(--accent); width: 40px; height: 40px; border-radius: 8px; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .map-controls-wrapper { position: relative; width: 100%; height: 0; }
   
-  /* ========================================== */
-    /* TRAFIC AÉRIEN GRANDEUR (ADS-B)             */
-    /* ========================================== */
-    .real-plane-icon {
-      width: 24px; height: 24px;
-      filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.8));
-      transition: transform 1s linear;
-    }
+    .real-plane-icon { width: 24px; height: 24px; filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.8)); transition: transform 1s linear; }
   
   </style>
 </head>
 <body>
 
   <header>
-    <div class="logo">DL<span>X</span>R V6.9 <span>METEO AFC</span></div>
-    <button id="ble-btn" onclick="connectBLE()">⚡ AJOUTER RX</button>
+    <div class="logo">DL<span>X</span>R V7.0 <span>RADAR AFC</span></div>
+    <button id="ble-btn" onclick="connectBLE()">⚡ CONNEXION RX</button>
   </header>
 
   <div id="map">
@@ -159,6 +158,23 @@
         <input type="range" id="slider-time" min="0" max="23" step="1" value="12">
       </div>
     </div>
+
+    <!-- CONTRÔLES TRACES & HEATMAP -->
+    <div id="trace-controls">
+      <label class="trace-check">
+          <input type="checkbox" id="toggle-heat" checked style="accent-color: var(--accent);">
+          <span>Heatmap de vol</span>
+      </label>
+      <label class="trace-check">
+          <input type="checkbox" id="toggle-line" checked style="accent-color: var(--accent);">
+          <span>Ligne de tracé</span>
+      </label>
+      <div class="trace-opacity">
+          <span style="font-size: 0.65rem; color: var(--muted); text-transform: uppercase;">Opacité</span>
+          <input type="range" id="heat-opacity" min="10" max="100" value="85" style="width: 60px; accent-color: var(--accent);">
+      </div>
+    </div>
+
   </div>
   
   <div class="map-controls-wrapper">
@@ -166,9 +182,10 @@
   </div>
 
   <div id="global-status">PILOTE: RECHERCHE GPS... | RX CONNECTÉS: 0</div>
-  <div id="drones-container"><div style="padding: 15px; text-align: center; color: var(--muted); font-size: 0.8rem;">Aucun drone détecté.</div></div>
+  <div id="drones-container"><div style="padding: 15px; text-align: center; color: var(--muted); font-size: 0.8rem;">Aucun modèle capté pour le moment.</div></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
   
   <script>
     // ==========================================
@@ -176,41 +193,16 @@
     // ==========================================
     const CONFIG = {
       origin: { lat: 47.854408, lon: 3.434616 }, 
-      
-      runway1: { 
-        lat1: 47.853890, lon1: 3.434071, 
-        lat2: 47.854850, lon2: 3.435555, 
-        width: 25,                       
-        heading: 51                      
-      },
-      
-      runway2: { 
-        lat1: 47.854841, lon1: 3.434967, 
-        lat2: 47.854277, lon2: 3.434944, 
-        width: 11.8                      
-      },
-
-      weatherThresholds: {
-        safe: 15,    // Rafales <= 15 = Vert
-        warning: 35  // Rafales >= 35 = Rouge. (Entre les deux = Jaune)
-      },
-      
-      windScale: 1.5 
+      runway1: { lat1: 47.853890, lon1: 3.434071, lat2: 47.854850, lon2: 3.435555, width: 25, heading: 51 },
+      runway2: { lat1: 47.854841, lon1: 3.434967, lat2: 47.854277, lon2: 3.434944, width: 11.8 },
+      weatherThresholds: { safe: 15, warning: 35 },
     };
 
-    // Code couleur Go/No-Go
     const COLORS = {
-      NIGHT: '#1a237e',  // Bleu marine sombre
-      RAIN: '#00d4ff',   // Bleu ciel / Cyan
-      FOG: '#ffffff',    // Blanc
-      ALERT: '#ff3b5c',  // Rouge
-      MODERATE: '#ffd700',// Jaune
-      OK: '#00ff9d'      // Vert
+      NIGHT: '#1a237e', RAIN: '#00d4ff', FOG: '#ffffff', 
+      ALERT: '#ff3b5c', MODERATE: '#ffd700', OK: '#00ff9d'
     };
 
-    // ==========================================
-    // 2. VARIABLES GLOBALES (BLE & Météo)
-    // ==========================================
     const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
     const CHARACT_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
     
@@ -218,9 +210,10 @@
     let userMarker = null, myLat = null, myLon = null;
     let autoCenter = true, centerThrottleTimeout = null;
     let weatherData = null;
+    let globalHeatOpacity = 0.85;
 
     // ==========================================
-    // 3. FONCTIONS GEOSPATIALES & CARTE
+    // 2. FONCTIONS GEOSPATIALES & CARTE
     // ==========================================
     function getRunwayPoly(lat1, lon1, lat2, lon2, widthMeters) {
       const R = 6378137;
@@ -244,16 +237,23 @@
     }
 
     const map = L.map('map', { center: [CONFIG.origin.lat, CONFIG.origin.lon], zoom: 17, zoomControl: false });
+    
+    // Ajout de l'imagerie Satellite Esri + Noms de lieux
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri', maxZoom: 20 }).addTo(map);
+    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20 }).addTo(map);
+    
     L.control.zoom({ position: 'topleft' }).addTo(map);
     map.on('dragstart', () => { autoCenter = false; });
 
-    // Bouclier d'événements pour permettre de glisser les curseurs sans bouger la carte
+    // Boucliers d'événements
     const timeControls = document.getElementById('time-controls');
     const windWidget = document.getElementById('wind-widget');
+    const traceControls = document.getElementById('trace-controls');
     L.DomEvent.disableClickPropagation(timeControls);
     L.DomEvent.disableScrollPropagation(timeControls);
     L.DomEvent.disableClickPropagation(windWidget);
+    L.DomEvent.disableClickPropagation(traceControls);
+    L.DomEvent.disableScrollPropagation(traceControls);
 
     // Dessin Pistes
     L.polygon(getRunwayPoly(CONFIG.runway1.lat1, CONFIG.runway1.lon1, CONFIG.runway1.lat2, CONFIG.runway1.lon2, CONFIG.runway1.width), { color: '#ffffff', weight: 1.5, fillColor: '#000000', fillOpacity: 0.75 }).addTo(map);
@@ -266,20 +266,13 @@
     L.marker([CONFIG.runway2.lat1, CONFIG.runway2.lon1], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">19</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
     L.marker([CONFIG.runway2.lat2, CONFIG.runway2.lon2], { icon: L.divIcon({ className: '', html: '<div class="runway-label secondary">01</div>', iconSize: [20, 14], iconAnchor: [10, 7] }) }).addTo(map);
 
-    // Calques Vectoriels
     const windVectorLayer = L.layerGroup().addTo(map);
     let sunPathPolyline = null, sunMarker = null;
 
     // ==========================================
-    // 4. MOTEUR D'INDICE DE VOL & COULEURS
+    // 3. GESTION DE LA MÉTÉO
     // ==========================================
-    
-    /**
-     * Calcule la couleur (l'indice) selon l'heure, le soleil, et la météo.
-     * Hiérarchie : Nuit > Pluie > Brouillard > Vent Fort > Vent Moyen > Parfait
-     */
     function getFlightColor(targetDate, gusts, precip, wmoCode) {
-      // Calcul du soleil pour la nuit aéronautique (Crépuscule civil : < -6°)
       const sunPos = SunCalc.getPosition(targetDate, CONFIG.origin.lat, CONFIG.origin.lon);
       const altDegrees = sunPos.altitude * 180 / Math.PI;
       
@@ -288,28 +281,22 @@
       if (wmoCode === 45 || wmoCode === 48) return COLORS.FOG;
       if (gusts >= CONFIG.weatherThresholds.warning) return COLORS.ALERT;
       if (gusts > CONFIG.weatherThresholds.safe) return COLORS.MODERATE;
-      
       return COLORS.OK;
     }
 
-    // ==========================================
-    // 5. GESTION DES PRÉVISIONS ET CURSEURS MÉTÉO
-    // ==========================================
     const sliderDate = document.getElementById('slider-date');
     const sliderTime = document.getElementById('slider-time');
     let totalDaysLoaded = 0;
 
     async function loadWeatherData() {
       try {
-        // Ajout du weathercode pour détecter le brouillard (WMO codes 45/48)
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.origin.lat}&longitude=${CONFIG.origin.lon}&hourly=windspeed_10m,winddirection_10m,windgusts_10m,precipitation,weathercode&past_days=7&forecast_days=7&timezone=auto`;
         const res = await fetch(url);
         const data = await res.json();
         weatherData = data.hourly;
         
         const now = new Date();
-        let closestIndex = 0;
-        let minDiff = Infinity;
+        let closestIndex = 0, minDiff = Infinity;
         
         for (let i = 0; i < weatherData.time.length; i++) {
           const t = new Date(weatherData.time[i]);
@@ -319,68 +306,40 @@
 
         totalDaysLoaded = Math.floor(weatherData.time.length / 24);
         sliderDate.max = totalDaysLoaded - 1;
-        
-        // Initialise sur le jour et l'heure actuels
         sliderDate.value = Math.floor(closestIndex / 24);
         sliderTime.value = closestIndex % 24;
 
-        // Génère le dégradé fixe du curseur des jours (moyennes)
         updateDateSliderGradient();
-
         applyWeatherData();
 
-        sliderDate.addEventListener('input', () => {
-          updateTimeSliderGradient(); // Met à jour le dégradé du jour sélectionné
-          applyWeatherData();
-        });
+        sliderDate.addEventListener('input', () => { updateTimeSliderGradient(); applyWeatherData(); });
         sliderTime.addEventListener('input', applyWeatherData);
         
-      } catch (e) {
-        console.error("Impossible de charger l'API Météo", e);
-      }
+      } catch (e) { console.error("API Météo inaccessible", e); }
     }
 
-    /**
-     * Dessine le dégradé du curseur "Heure" avec les 24 couleurs de la journée sélectionnée
-     */
     function updateTimeSliderGradient() {
       const dayIdx = parseInt(sliderDate.value);
       const stops = [];
-      
       for (let h = 0; h < 24; h++) {
         const dataIndex = (dayIdx * 24) + h;
         const targetDate = new Date(weatherData.time[dataIndex]);
-        const color = getFlightColor(
-          targetDate, 
-          weatherData.windgusts_10m[dataIndex], 
-          weatherData.precipitation[dataIndex], 
-          weatherData.weathercode[dataIndex]
-        );
-        const percent = (h / 23) * 100;
-        stops.push(`${color} ${percent}%`);
+        const color = getFlightColor(targetDate, weatherData.windgusts_10m[dataIndex], weatherData.precipitation[dataIndex], weatherData.weathercode[dataIndex]);
+        stops.push(`${color} ${(h / 23) * 100}%`);
       }
-      
       sliderTime.style.background = `linear-gradient(to right, ${stops.join(', ')})`;
     }
 
-    /**
-     * Dessine le dégradé du curseur "Date" basé sur la MOYENNE des heures de JOUR de chaque jour.
-     */
     function updateDateSliderGradient() {
       const stops = [];
-      
       for (let d = 0; d < totalDaysLoaded; d++) {
         let sumGusts = 0, sumPrecip = 0, dayHours = 0, fogHours = 0;
-        
-        // On analyse les 24h du jour
         for (let h = 0; h < 24; h++) {
           const dataIndex = (d * 24) + h;
           const targetDate = new Date(weatherData.time[dataIndex]);
           const sunPos = SunCalc.getPosition(targetDate, CONFIG.origin.lat, CONFIG.origin.lon);
-          const altDegrees = sunPos.altitude * 180 / Math.PI;
           
-          // On ne fait la moyenne QUE sur les heures de jour (Soleil > -6°)
-          if (altDegrees >= -6) {
+          if ((sunPos.altitude * 180 / Math.PI) >= -6) {
             sumGusts += weatherData.windgusts_10m[dataIndex] || 0;
             sumPrecip += weatherData.precipitation[dataIndex] || 0;
             const wmo = weatherData.weathercode[dataIndex];
@@ -388,38 +347,24 @@
             dayHours++;
           }
         }
-        
-        let dailyColor = COLORS.NIGHT; // Fallback si jour polaire (impossible ici)
-        
+        let dailyColor = COLORS.NIGHT;
         if (dayHours > 0) {
-          const avgGusts = sumGusts / dayHours;
-          const avgPrecip = sumPrecip / dayHours;
-          
+          const avgGusts = sumGusts / dayHours, avgPrecip = sumPrecip / dayHours;
           if (avgPrecip > 0.1) dailyColor = COLORS.RAIN;
-          else if (fogHours > (dayHours / 3)) dailyColor = COLORS.FOG; // Si + de 1/3 de la journée est dans le brouillard
+          else if (fogHours > (dayHours / 3)) dailyColor = COLORS.FOG;
           else if (avgGusts >= CONFIG.weatherThresholds.warning) dailyColor = COLORS.ALERT;
           else if (avgGusts > CONFIG.weatherThresholds.safe) dailyColor = COLORS.MODERATE;
           else dailyColor = COLORS.OK;
         }
-        
-        const percent = (d / (totalDaysLoaded - 1)) * 100;
-        stops.push(`${dailyColor} ${percent}%`);
+        stops.push(`${dailyColor} ${(d / (totalDaysLoaded - 1)) * 100}%`);
       }
-      
       sliderDate.style.background = `linear-gradient(to right, ${stops.join(', ')})`;
-      updateTimeSliderGradient(); // Met à jour le slider horaire pour le premier affichage
+      updateTimeSliderGradient();
     }
 
-    /**
-     * Extrait les données de l'heure exacte pointée par les curseurs et met à jour l'UI/Carte
-     */
     function applyWeatherData() {
       if (!weatherData) return;
-
-      const dayIdx = parseInt(sliderDate.value);
-      const hourIdx = parseInt(sliderTime.value);
-      const dataIndex = (dayIdx * 24) + hourIdx;
-
+      const dataIndex = (parseInt(sliderDate.value) * 24) + parseInt(sliderTime.value);
       const targetDate = new Date(weatherData.time[dataIndex]);
       const windSpeed = weatherData.windspeed_10m[dataIndex] || 0;
       const windDir = weatherData.winddirection_10m[dataIndex] || 0;
@@ -430,56 +375,23 @@
       document.getElementById('label-date').textContent = targetDate.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' });
       document.getElementById('label-time').textContent = targetDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-      // Calcule la couleur de l'instant T
       const alertColor = getFlightColor(targetDate, windGusts, precip, wmo);
-      
-      // Injecte la couleur dans CSS pour colorer la bordure, les pouces des curseurs, et le texte "Rafales"
       document.documentElement.style.setProperty('--weather-color', alertColor);
 
-      // Calcul de la composante traversière (Axe piste principale 05)
       const angleRad = (windDir - CONFIG.runway1.heading) * (Math.PI / 180);
-      const crosswind = Math.sin(angleRad) * windSpeed;
-      const absCrosswind = Math.abs(crosswind);
+      const crosswind = Math.abs(Math.sin(angleRad) * windSpeed);
 
       document.getElementById('ui-wind').textContent = `Vent: ${windSpeed.toFixed(1)} km/h`;
       document.getElementById('ui-gusts').textContent = `Rafales: ${windGusts.toFixed(1)} km/h`;
-      
-      // Textes conditionnels pour Brouillard/Pluie
-      if (wmo === 45 || wmo === 48) {
-        document.getElementById('ui-precip').textContent = `MÉTÉO: BROUILLARD`;
-      } else {
-        document.getElementById('ui-precip').textContent = `Pluie: ${precip.toFixed(1)} mm`;
-      }
-      
-      document.getElementById('ui-cross').textContent = `Travers: ${absCrosswind.toFixed(1)} km/h`;
+      document.getElementById('ui-precip').textContent = (wmo === 45 || wmo === 48) ? `MÉTÉO: BROUILLARD` : `Pluie: ${precip.toFixed(1)} mm`;
+      document.getElementById('ui-cross').textContent = `Travers: ${crosswind.toFixed(1)} km/h`;
       document.getElementById('wind-arrow-ui').style.transform = `rotate(${windDir + 180}deg)`;
 
-     // --- DESSIN DES VECTEURS GPS SUR LA CARTE ---
-windVectorLayer.clearLayers();
-const windDestinationBearing = windDir + 180; 
-
-if (windSpeed > 0) {
-  // Vecteur global (échelle: 1 km/h = 5.1m sur la carte)
-  const windDestCoords = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, windSpeed * 5.1, windDestinationBearing);
-  L.polyline([[CONFIG.origin.lat, CONFIG.origin.lon], windDestCoords], {color: alertColor, weight: 4}).addTo(windVectorLayer);
-  
-  // Pointe de la flèche
-  const barbLength = 4;
-  const barb1 = computeDestinationPoint(windDestCoords[0], windDestCoords[1], barbLength, windDestinationBearing + 160); 
-  const barb2 = computeDestinationPoint(windDestCoords[0], windDestCoords[1], barbLength, windDestinationBearing - 160);
-  L.polygon([windDestCoords, barb1, barb2], {color: alertColor, fillColor: alertColor, fillOpacity: 1, weight: 1}).addTo(windVectorLayer);
-}
-
-if (absCrosswind > 0) {
-  // Vecteur traversier
-  const crosswindDirection = crosswind > 0 ? (CONFIG.runway1.heading - 90) : (CONFIG.runway1.heading + 90);
-  const crossDestCoords = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, absCrosswind * 5.1, crosswindDirection);
-  L.polyline([[CONFIG.origin.lat, CONFIG.origin.lon], crossDestCoords], {color: '#ff3b5c', weight: 6, lineCap: 'round'}).addTo(windVectorLayer);
-}
-
-// Origine centrale
-L.circleMarker([CONFIG.origin.lat, CONFIG.origin.lon], {radius: 5, color: 'white', weight: 1.5, fillColor: alertColor, fillOpacity: 1}).addTo(windVectorLayer);
-      // Met à jour la position du soleil
+      windVectorLayer.clearLayers();
+      if (windSpeed > 0) {
+        const dest = computeDestinationPoint(CONFIG.origin.lat, CONFIG.origin.lon, windSpeed * 5.1, windDir + 180);
+        L.polyline([[CONFIG.origin.lat, CONFIG.origin.lon], dest], {color: alertColor, weight: 4}).addTo(windVectorLayer);
+      }
       updateSunPosition(targetDate);
     }
 
@@ -494,35 +406,63 @@ L.circleMarker([CONFIG.origin.lat, CONFIG.origin.lon], {radius: 5, color: 'white
         const t = new Date(times.sunrise.getTime() + (times.sunset.getTime() - times.sunrise.getTime()) * (i / 100));
         const pos = SunCalc.getPosition(t, CONFIG.origin.lat, CONFIG.origin.lon);
         const az = (pos.azimuth * 180 / Math.PI + 180) % 360;
-        const lat = CONFIG.origin.lat + Math.cos(az * Math.PI / 180) * radius;
-        const lon = CONFIG.origin.lon + Math.sin(az * Math.PI / 180) * (radius / Math.cos(CONFIG.origin.lat * Math.PI / 180));
-        arcPoints.push([lat, lon]);
+        arcPoints.push([CONFIG.origin.lat + Math.cos(az * Math.PI / 180) * radius, CONFIG.origin.lon + Math.sin(az * Math.PI / 180) * (radius / Math.cos(CONFIG.origin.lat * Math.PI / 180))]);
       }
 
       if (sunPathPolyline) map.removeLayer(sunPathPolyline);
       sunPathPolyline = L.polyline(arcPoints, { color: '#ffb700', weight: 2, dashArray: '4 8', opacity: 0.7 }).addTo(map);
 
-      if (sunPos.altitude > -0.1) { // Laisse le soleil visible jusqu'à la nuit complète
-        const currentLat = CONFIG.origin.lat + Math.cos(sunAzimuth * Math.PI / 180) * radius;
-        const currentLon = CONFIG.origin.lon + Math.sin(sunAzimuth * Math.PI / 180) * (radius / Math.cos(CONFIG.origin.lat * Math.PI / 180));
-        const sunIcon = L.divIcon({ className: '', html: '<div class="sun-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
-        
-        if (!sunMarker) sunMarker = L.marker([currentLat, currentLon], { icon: sunIcon, interactive: false }).addTo(map);
-        else { sunMarker.setLatLng([currentLat, currentLon]); sunMarker.setOpacity(1); }
-      } else {
-        if (sunMarker) sunMarker.setOpacity(0);
-      }
+      if (sunPos.altitude > -0.1) {
+        const cLat = CONFIG.origin.lat + Math.cos(sunAzimuth * Math.PI / 180) * radius;
+        const cLon = CONFIG.origin.lon + Math.sin(sunAzimuth * Math.PI / 180) * (radius / Math.cos(CONFIG.origin.lat * Math.PI / 180));
+        if (!sunMarker) sunMarker = L.marker([cLat, cLon], { icon: L.divIcon({ className: '', html: '<div class="sun-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }) }).addTo(map);
+        else { sunMarker.setLatLng([cLat, cLon]); sunMarker.setOpacity(1); }
+      } else if (sunMarker) sunMarker.setOpacity(0);
     }
 
     loadWeatherData();
 
     // ==========================================
-    // 6. GESTION DES DRONES ET DU PILOTE
+    // 4. GESTION DES DRONES, PARSING UNIVERSEL ET HEATMAP
     // ==========================================
     const droneIcon = L.divIcon({ className: '', html: '<div class="drone-marker"><div class="drone-dot"></div></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
     const userIcon = L.divIcon({ className: '', html: '<div class="user-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
 
     function sanitizeId(rawId) { return String(rawId || "Inconnu").replace(/[^a-zA-Z0-9_-]/g, '_'); }
+
+    // Qualité de signal UI
+    function formatQualiteSignal(rssi) {
+        if (rssi == null || rssi === 0 || isNaN(rssi)) return '<span style="color:var(--muted)">N/A</span>';
+        let num = parseFloat(rssi);
+        let color = '';
+        if (num >= -90) color = 'var(--green)';
+        else if (num >= -105) color = 'var(--accent)';
+        else if (num >= -115) color = 'var(--yellow)';
+        else color = 'var(--red)';
+        return `${rssi} dBm <span style="color:${color}; font-size:9px; vertical-align:middle;">⬤</span>`;
+    }
+
+    // Gestion Opacité Dynamique de la Heatmap
+    document.getElementById('heat-opacity').addEventListener('input', function(e) {
+        globalHeatOpacity = e.target.value / 100;
+        document.querySelectorAll('#map canvas.leaflet-zoom-animated').forEach(c => {
+            c.style.opacity = globalHeatOpacity;
+        });
+    });
+
+    // Boutons de calques
+    document.getElementById('toggle-heat').addEventListener('change', (e) => {
+        Object.values(drones).forEach(dr => {
+            if (dr.heatLayer) e.target.checked ? dr.heatLayer.addTo(map) : map.removeLayer(dr.heatLayer);
+        });
+        if (e.target.checked) setTimeout(() => document.getElementById('heat-opacity').dispatchEvent(new Event('input')), 20);
+    });
+
+    document.getElementById('toggle-line').addEventListener('change', (e) => {
+        Object.values(drones).forEach(dr => {
+            if (dr.polyline) e.target.checked ? dr.polyline.addTo(map) : map.removeLayer(dr.polyline);
+        });
+    });
 
     function startGeolocation() {
       if (!navigator.geolocation) return;
@@ -545,7 +485,7 @@ L.circleMarker([CONFIG.origin.lat, CONFIG.origin.lon], {radius: 5, color: 'white
       const colors = ['#00d4ff', '#ff6b35', '#00ff9d', '#ffd700', '#ff3b5c', '#b19cd9'];
       const color = colors[Object.keys(drones).length % colors.length];
 
-      drones[id] = { rxCount: 0, lastLat: null, lastLon: null, marker: null, polyline: null, linkLine: null, tracePath: [], color: color, lastSeen: Date.now() };
+      drones[id] = { rxCount: 0, lastLat: null, lastLon: null, marker: null, polyline: null, heatLayer: null, linkLine: null, tracePath: [], color: color, lastSeen: Date.now() };
 
       const html = `
         <div class="drone-panel" id="panel-${id}">
@@ -566,12 +506,27 @@ L.circleMarker([CONFIG.origin.lat, CONFIG.origin.lon], {radius: 5, color: 'white
 
     function updateMap(id, lat, lon) {
       const dr = drones[id]; const latlng = [lat, lon];
+      
       if (!dr.marker) dr.marker = L.marker(latlng, { icon: droneIcon }).bindTooltip(`🎯 ${id}`, { permanent: true, direction: 'right' }).addTo(map);
       else dr.marker.setLatLng(latlng);
       
       dr.tracePath.push(latlng);
+
+      // Trait classique
       if (dr.polyline) dr.polyline.setLatLngs(dr.tracePath);
-      else dr.polyline = L.polyline(dr.tracePath, { color: dr.color, weight: 2, opacity: 0.7 }).addTo(map);
+      else {
+          dr.polyline = L.polyline(dr.tracePath, { color: dr.color, weight: 3.5, opacity: 0.9, dashArray: '4 6' });
+          if (document.getElementById('toggle-line').checked) dr.polyline.addTo(map);
+      }
+
+      // Heatmap Dense
+      if (dr.heatLayer) map.removeLayer(dr.heatLayer);
+      const heatCoords = dr.tracePath.map(p => [p[0], p[1], 0.9]);
+      dr.heatLayer = L.heatLayer(heatCoords, { radius: 28, blur: 16, maxZoom: 18, gradient: { 0.2: '#38bdf8', 0.5: '#34d399', 0.8: '#facc15', 1.0: '#f43f5e' } });
+      if (document.getElementById('toggle-heat').checked) {
+          dr.heatLayer.addTo(map);
+          setTimeout(() => document.getElementById('heat-opacity').dispatchEvent(new Event('input')), 10);
+      }
       
       requestCenterMap(); updateLinkLine(id);
     }
@@ -601,39 +556,109 @@ L.circleMarker([CONFIG.origin.lat, CONFIG.origin.lon], {radius: 5, color: 'white
       });
     }, 2000);
 
-    function handleData(json) {
-      try {
-        const d = JSON.parse(json); const id = sanitizeId(d.drone_id || d.id);
-        if (!drones[id]) createNewDrone(id);
-        const dr = drones[id]; dr.rxCount++; dr.lastSeen = Date.now();
-        
-        const etat = (d.etat || '--').toUpperCase(), alt = Math.max(0, parseFloat(d.alt || 0)).toFixed(0);
-        const dist = parseFloat(d.dist || 0), rssi = parseFloat(d.rssi || 0).toFixed(0);
-        const lat = parseFloat(d.lat || 0), lon = parseFloat(d.lon || 0);
+    // ==========================================
+    // PARSER UNIVERSEL (JSON + Brut Jivaro Rétrocompatible)
+    // ==========================================
+    function parsePayload(raw) {
+        let d = { lat: 0, lon: 0, alt: 0, sats: 0, rssi: null, etat: null };
+        let isJson = false;
 
-        const badge = document.getElementById(`badge-${id}`);
-        badge.textContent = etat; badge.className = 'state-badge ' + etat;
-        document.getElementById(`rssi-${id}`).textContent = `RSSI:${rssi}`;
+        // 1. Essai JSON (Ex: Katarina V4)
+        try {
+            if (raw.trim().startsWith('{')) {
+                const parsed = JSON.parse(raw);
+                Object.assign(d, parsed);
+                d.id = d.drone_id || d.id || "Inconnu";
+                isJson = true;
+            }
+        } catch(e) {}
+
+        // 2. Fallback Texte Brut ou CSV (Ex: Vieux DLxR ou Jivaro)
+        if (!isJson) {
+            let idM = raw.match(/(?:ID|DRONE_ID|DRONE)[:=]\s*([^,\s]+)/i);
+            let latM = raw.match(/LAT[:=]\s*(-?\d+\.\d+)/i);
+            let lonM = raw.match(/LON[:=]\s*(-?\d+\.\d+)/i);
+            let altM = raw.match(/ALT[:=]\s*(-?\d+(?:\.\d+)?)/i);
+            let satsM = raw.match(/SAT[S]?[:=]\s*(\d+)/i);
+            let rssiM = raw.match(/RSSI[:=]\s*(-?\d+)/i);
+
+            if (latM && lonM) {
+                // Modèle Clé:Valeur (ID:Toto, LAT:47.1...)
+                d.id = idM ? idM[1] : "Tracker_BRUT";
+                d.lat = parseFloat(latM[1]);
+                d.lon = parseFloat(lonM[1]);
+                if (altM) d.alt = parseFloat(altM[1]);
+                if (satsM) d.sats = parseInt(satsM[1]);
+                if (rssiM) d.rssi = parseInt(rssiM[1]);
+            } else {
+                // Modèle CSV (Toto,47.8543,3.4349,150,12)
+                let parts = raw.split(',').map(s => s.trim());
+                if (parts.length >= 3 && !isNaN(parts[1]) && !isNaN(parts[2])) {
+                    d.id = parts[0] || "Tracker_CSV";
+                    d.lat = parseFloat(parts[1]);
+                    d.lon = parseFloat(parts[2]);
+                    if (parts[3] && !isNaN(parts[3])) d.alt = parseFloat(parts[3]);
+                    if (parts[4] && !isNaN(parts[4])) d.sats = parseInt(parts[4]);
+                    if (parts[5] && !isNaN(parts[5])) d.rssi = parseInt(parts[5]);
+                } else {
+                    d.id = "Invalide";
+                }
+            }
+        }
+
+        // Si le Heltec RX a ajouté un "rssi:-95" à l'arrache en fin de chaîne brute
+        if (d.rssi === null) {
+            const rssiFallback = raw.match(/rssi[:=]?\s*(-?\d+)/i);
+            if (rssiFallback) d.rssi = parseInt(rssiFallback[1]);
+        }
+
+        if (!d.etat) d.etat = (d.lat && d.lat !== 0) ? "VOL" : "RECHERCHE";
+        return d;
+    }
+
+    function handleData(rawString) {
+      try {
+        const d = parsePayload(rawString);
+        if (d.id === "Invalide") return; 
+        
+        const id = sanitizeId(d.id);
+        if (!drones[id]) createNewDrone(id);
+        
+        const dr = drones[id]; 
+        dr.rxCount++; 
+        dr.lastSeen = Date.now();
+        
+        const etat = d.etat.toUpperCase();
+        const alt = Math.max(0, d.alt || 0).toFixed(0);
+        
+        let distStr = "--";
+        if (myLat && d.lat) {
+            const dist = map.distance([myLat, myLon], [d.lat, d.lon]);
+            distStr = dist < 1000 ? `${dist.toFixed(0)}m` : `${(dist / 1000).toFixed(2)}km`;
+        }
+
+        document.getElementById(`badge-${id}`).textContent = etat; 
+        document.getElementById(`badge-${id}`).className = 'state-badge ' + etat;
+        document.getElementById(`rssi-${id}`).innerHTML = `RSSI: ${formatQualiteSignal(d.rssi)}`;
         document.getElementById(`alt-${id}`).textContent = `Alt:${alt}m`;
-        document.getElementById(`dist-${id}`).textContent = dist < 1000 ? `${dist.toFixed(0)}m` : `${(dist / 1000).toFixed(2)}km`;
+        document.getElementById(`dist-${id}`).textContent = `Dist:${distStr}`;
         document.getElementById(`tr-${id}`).textContent = `Tr:${dr.rxCount}`;
 
-const sats = d.sats !== undefined ? d.sats : 0;
-
-    if (etat === 'BOOT' || (lat === 0 && lon === 0)) {
-      document.getElementById(`pos-${id}`).textContent = `Recherche GPS... (Sat: ${sats})`;
-      document.getElementById(`pos-${id}`).className = 'info-item yellow';
-    } else {
-      dr.lastLat = lat; dr.lastLon = lon;
-      document.getElementById(`pos-${id}`).textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)} (Sat: ${sats})`;
-      document.getElementById(`pos-${id}`).className = 'info-item muted';
-      updateMap(id, lat, lon);
-    }
-      } catch(e) {}
+        const posEl = document.getElementById(`pos-${id}`);
+        if (etat === 'BOOT' || (d.lat === 0 && d.lon === 0)) {
+            posEl.textContent = `Recherche GPS... (Sat: ${d.sats})`;
+            posEl.className = 'info-item yellow';
+        } else {
+            dr.lastLat = d.lat; dr.lastLon = d.lon;
+            posEl.textContent = `${d.lat.toFixed(6)}, ${d.lon.toFixed(6)} (Sat: ${d.sats})`;
+            posEl.className = 'info-item muted';
+            updateMap(id, d.lat, d.lon);
+        }
+      } catch(e) { console.error("Erreur de payload", e); }
     }
 
     async function connectBLE() {
-      if (!navigator.bluetooth) return alert('Web Bluetooth non supporté !');
+      if (!navigator.bluetooth) return alert('Web Bluetooth non supporté ! Utilisez Chrome sur Android ou un Mac.');
       try {
         const device = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'DLXR_RX' }], optionalServices: [SERVICE_UUID] });
         device.addEventListener('gattserverdisconnected', () => { connectedRX = connectedRX.filter(d => d.id !== device.id); updateGlobalStatus(); });
@@ -648,78 +673,46 @@ const sats = d.sats !== undefined ? d.sats : 0;
         updateGlobalStatus();
       } catch(e) { console.error('Erreur BLE:', e); }
     }
-// ==========================================
-    // 8. TRAFIC AÉRIEN GRANDEUR (ADS-B OpenSky)
+
+    // ==========================================
+    // 5. TRAFIC AÉRIEN GRANDEUR (ADS-B OpenSky)
     // ==========================================
     const trafficLayer = L.layerGroup().addTo(map);
-    let trafficMarkers = {}; // Dictionnaire des avions grandeur
+    let trafficMarkers = {};
 
     async function updateAirTraffic() {
-      // Création d'une "boîte" de capture d'environ 50km de rayon autour du terrain
-      const lamin = CONFIG.origin.lat - 0.5;
-      const lamax = CONFIG.origin.lat + 0.5;
-      const lomin = CONFIG.origin.lon - 0.5;
-      const lomax = CONFIG.origin.lon + 0.5;
+      const lamin = CONFIG.origin.lat - 0.5, lamax = CONFIG.origin.lat + 0.5;
+      const lomin = CONFIG.origin.lon - 0.5, lomax = CONFIG.origin.lon + 0.5;
       
       try {
         const res = await fetch(`https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`);
         if (!res.ok) return;
         const data = await res.json();
-        
         const currentFlightIds = new Set();
 
         if (data.states) {
           data.states.forEach(state => {
-            const id = state[0]; // ICAO24 (ID unique de l'avion)
-            const callsign = state[1] ? state[1].trim() : "Inconnu"; // Indicatif (ex: AFR123)
-            const lon = state[5];
-            const lat = state[6];
-            const alt = state[7] || state[13] || 0; // Altitude barométrique
-            const track = state[10] || 0; // Cap vrai
-            const velocity = (state[9] || 0) * 3.6; // Conversion vitesse m/s -> km/h
+            const id = state[0], callsign = state[1] ? state[1].trim() : "Inconnu";
+            const lon = state[5], lat = state[6], alt = state[7] || state[13] || 0;
+            const track = state[10] || 0, velocity = (state[9] || 0) * 3.6;
 
             if (lat === null || lon === null) return;
             currentFlightIds.add(id);
 
-            // Icone SVG d'avion de ligne orientée vers son vrai cap
-            const htmlIcon = `
-              <div style="transform: rotate(${track}deg);">
-                <svg class="real-plane-icon" viewBox="0 0 24 24" fill="#aab0c0" stroke="#ffffff" stroke-width="1">
-                  <path d="M21,16V14L13,9V3.5C13,2.67 12.33,2 11.5,2C10.67,2 10,2.67 10,3.5V9L2,14V16L10,13.5V19L8,20.5V22L11.5,21L15,22V20.5L13,19V13.5L21,16Z" />
-                </svg>
-              </div>`;
+            const icon = L.divIcon({ className: '', html: `<div style="transform: rotate(${track}deg);"><svg class="real-plane-icon" viewBox="0 0 24 24" fill="#aab0c0" stroke="#ffffff" stroke-width="1"><path d="M21,16V14L13,9V3.5C13,2.67 12.33,2 11.5,2C10.67,2 10,2.67 10,3.5V9L2,14V16L10,13.5V19L8,20.5V22L11.5,21L15,22V20.5L13,19V13.5L21,16Z" /></svg></div>`, iconSize: [24, 24], iconAnchor: [12, 12] });
 
-            const icon = L.divIcon({ className: '', html: htmlIcon, iconSize: [24, 24], iconAnchor: [12, 12] });
-
-            // Création ou mise à jour de la position sur la carte
-            if (!trafficMarkers[id]) {
-              trafficMarkers[id] = L.marker([lat, lon], { icon: icon }).addTo(trafficLayer);
-            } else {
-              trafficMarkers[id].setLatLng([lat, lon]);
-              trafficMarkers[id].setIcon(icon);
-            }
+            if (!trafficMarkers[id]) trafficMarkers[id] = L.marker([lat, lon], { icon: icon }).addTo(trafficLayer);
+            else { trafficMarkers[id].setLatLng([lat, lon]); trafficMarkers[id].setIcon(icon); }
             
-            // Pop-up d'information au survol (réutilisation du CSS de ton label de piste)
-            trafficMarkers[id].bindTooltip(`<b>${callsign}</b><br>Alt: ${Math.round(alt)}m<br>Vit: ${Math.round(velocity)} km/h`, {
-              className: 'runway-label', direction: 'top', offset: [0, -10]
-            });
+            trafficMarkers[id].bindTooltip(`<b>${callsign}</b><br>Alt: ${Math.round(alt)}m<br>Vit: ${Math.round(velocity)} km/h`, { className: 'runway-label', direction: 'top', offset: [0, -10] });
           });
         }
-
-        // Nettoyage des avions qui ont quitté la zone
         Object.keys(trafficMarkers).forEach(id => {
-          if (!currentFlightIds.has(id)) {
-            trafficLayer.removeLayer(trafficMarkers[id]);
-            delete trafficMarkers[id];
-          }
+          if (!currentFlightIds.has(id)) { trafficLayer.removeLayer(trafficMarkers[id]); delete trafficMarkers[id]; }
         });
-
-      } catch (error) {
-        // On reste silencieux en cas d'erreur réseau pour ne pas spammer la console
-      }
+      } catch (error) {}
     }
 
-    // Premier scan du ciel au démarrage, puis rafraîchissement toutes les 15 secondes
     updateAirTraffic();
     setInterval(updateAirTraffic, 15000);
     startGeolocation();
