@@ -556,14 +556,14 @@
       });
     }, 2000);
 
-    // ==========================================
+ // ==========================================
     // PARSER UNIVERSEL (JSON + Brut Jivaro Rétrocompatible)
     // ==========================================
     function parsePayload(raw) {
         let d = { lat: 0, lon: 0, alt: 0, sats: 0, rssi: null, etat: null };
         let isJson = false;
 
-        // 1. Essai JSON (Ex: Katarina V4)
+        // 1. Essai JSON
         try {
             if (raw.trim().startsWith('{')) {
                 const parsed = JSON.parse(raw);
@@ -573,25 +573,29 @@
             }
         } catch(e) {}
 
-        // 2. Fallback Texte Brut ou CSV (Ex: Vieux DLxR ou Jivaro)
+        // 2. Fallback Texte Brut ou CSV
         if (!isJson) {
             let idM = raw.match(/(?:ID|DRONE_ID|DRONE)[:=]\s*([^,\s]+)/i);
-            let latM = raw.match(/LAT[:=]\s*(-?\d+\.\d+)/i);
-            let lonM = raw.match(/LON[:=]\s*(-?\d+\.\d+)/i);
+            
+            // CORRECTION : On rend la décimale optionnelle avec (?:\.\d+)? pour accepter "LAT:0"
+            let latM = raw.match(/LAT[:=]\s*(-?\d+(?:\.\d+)?)/i);
+            let lonM = raw.match(/LON[:=]\s*(-?\d+(?:\.\d+)?)/i);
             let altM = raw.match(/ALT[:=]\s*(-?\d+(?:\.\d+)?)/i);
             let satsM = raw.match(/SAT[S]?[:=]\s*(\d+)/i);
             let rssiM = raw.match(/RSSI[:=]\s*(-?\d+)/i);
+            let etatM = raw.match(/ETAT[:=]\s*([^,\s]+)/i);
 
-            if (latM && lonM) {
-                // Modèle Clé:Valeur (ID:Toto, LAT:47.1...)
+            // Si on trouve un ID ou des coordonnées, c'est bon !
+            if (idM || (latM && lonM)) {
                 d.id = idM ? idM[1] : "Tracker_BRUT";
-                d.lat = parseFloat(latM[1]);
-                d.lon = parseFloat(lonM[1]);
+                d.lat = latM ? parseFloat(latM[1]) : 0;
+                d.lon = lonM ? parseFloat(lonM[1]) : 0;
                 if (altM) d.alt = parseFloat(altM[1]);
                 if (satsM) d.sats = parseInt(satsM[1]);
                 if (rssiM) d.rssi = parseInt(rssiM[1]);
+                if (etatM) d.etat = etatM[1];
             } else {
-                // Modèle CSV (Toto,47.8543,3.4349,150,12)
+                // Modèle CSV rudimentaire (ex: Toto,47.85,3.43)
                 let parts = raw.split(',').map(s => s.trim());
                 if (parts.length >= 3 && !isNaN(parts[1]) && !isNaN(parts[2])) {
                     d.id = parts[0] || "Tracker_CSV";
@@ -606,7 +610,7 @@
             }
         }
 
-        // Si le Heltec RX a ajouté un "rssi:-95" à l'arrache en fin de chaîne brute
+        // Catch global du RSSI si ajouté à la volée
         if (d.rssi === null) {
             const rssiFallback = raw.match(/rssi[:=]?\s*(-?\d+)/i);
             if (rssiFallback) d.rssi = parseInt(rssiFallback[1]);
